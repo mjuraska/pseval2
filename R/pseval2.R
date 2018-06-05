@@ -32,68 +32,126 @@ tpsPredict <- function(fit, newMatrix){
   return(drop(1/(1+exp(-linPred))))
 }
 
-# 'hNum' returns function values at s0 of the integrand in the numerator of risk_{(0)}(s_1)
-# s0 is a numeric vector, whereas s1, x.male, x.age, x.country are scalars
-hNum <- function(s0, s1, x.age, x.country, tpsFit, changePoint, npcdensFit1, npcdensFit2){
-  phat.s0 <- tpsPredict(tpsFit, cbind(1, ifelse(s0>changePoint,s0-changePoint,0), as.numeric(x.age==">11"),
-                                      as.numeric(x.country=="COL"), as.numeric(x.country=="HND"), as.numeric(x.country=="IND"), as.numeric(x.country=="MEX"),
-                                      as.numeric(x.country=="MYS"), as.numeric(x.country=="PHL"), as.numeric(x.country=="PRI"),as.numeric(x.country=="THA"),
-                                      as.numeric(x.country=="VNM")))
-  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, AGE=x.age, COUNTRY=x.country, S=s1))
-  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(AGE=x.age, COUNTRY=x.country, S=s0))
+# 'hNum' returns function values at s0 of the integrand in the numerator of P{Y(0)=1 | S(1)=s1}
+# s0 is a numeric vector, whereas s1 is a scalar
+hNum <- function(s0, s1, lev, vars, data, tpsFit, changePoint=NULL, npcdensFit1, npcdensFit2){
+  ss0 <- s0
+  if (!is.null(changePoint)){ ss0 <- ifelse(s0>changePoint, s0-changePoint, 0) }
+  phat.s0 <- tpsPredict(tpsFit, cbind(1, ss0, matrix(lev[-1], nrow=length(ss0), ncol=length(lev[-1]), byrow=TRUE)))
+
+  lev1names <- names(which(lev==1))
+  predictLevels <- NULL
+  for (vi in 1:length(vars)){
+    varLevels <- levels(data[,vars[vi]])
+    predictLevelVar <- NULL
+    for (li in 2:length(varLevels)){
+      if (any(grepl(vars[vi], lev1names) & grepl(varLevels[li], lev1names))){
+        predictLevelVar <- varLevels[li]
+        break
+      }
+    }
+    if (is.null(predictLevelVar)){ predictLevelVar <- varLevels[1] }
+    predictLevels <- c(predictLevels, predictLevelVar)
+  }
+
+  dfVars <- as.data.frame(matrix(predictLevels, nrow=length(s0), ncol=length(predictLevels), byrow=TRUE))
+  colnames(dfVars) <- vars
+
+  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, dfVars, S=s1))
+  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(dfVars, S=s0))
   return(phat.s0*fhat.s0*ghat.s0)
 }
 
 # 'hDen' returns function values at s0 of the integrand in the denominator of risk_{(0)}(s_1)
-# s0 is a numeric vector, whereas s1, x.age, x.country are scalars
-hDen <- function(s0, s1, x.age, x.country, npcdensFit1, npcdensFit2){
-  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, AGE=x.age, COUNTRY=x.country, S=s1))
-  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(AGE=x.age, COUNTRY=x.country, S=s0))
+# s0 is a numeric vector, whereas s1 is a scalar
+hDen <- function(s0, s1, lev, vars, data, npcdensFit1, npcdensFit2){
+  lev1names <- names(which(lev==1))
+  predictLevels <- NULL
+  for (vi in 1:length(vars)){
+    varLevels <- levels(data[,vars[vi]])
+    predictLevelVar <- NULL
+    for (li in 2:length(varLevels)){
+      if (any(grepl(vars[vi], lev1names) & grepl(varLevels[li], lev1names))){
+        predictLevelVar <- varLevels[li]
+        break
+      }
+    }
+    if (is.null(predictLevelVar)){ predictLevelVar <- varLevels[1] }
+    predictLevels <- c(predictLevels, predictLevelVar)
+  }
+
+  dfVars <- as.data.frame(matrix(predictLevels, nrow=length(s0), ncol=length(predictLevels), byrow=TRUE))
+  colnames(dfVars) <- vars
+
+  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, dfVars, S=s1))
+  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(dfVars, S=s0))
   return(fhat.s0*ghat.s0)
 }
 
-# 'propX' returns the sample proportion of subjects in the (x.age, x.country) category in 'data'
-propX <- function(x.age, x.country, data){
-  return(NROW(subset(data, AGE==x.age & COUNTRY==x.country))/NROW(data))
+propX <- function(X, lev1names){
+  # all levels are zero except the intercept
+  if (length(lev1names)==1){
+    # if no covariates
+    if (NCOL(X)==1){
+      return(1)
+    } else {
+      Xsum <- apply(as.matrix(X[,-1]), 1, sum)
+      return(mean(Xsum==0))
+    }
+  } else {
+    X1 <- as.matrix(X[,lev1names[-1]])
+    Xsum <- apply(X1, 1, sum)
+    return(mean(Xsum==NCOL(X1)))
+  }
 }
 
-# 'riskP' returns the value of risk_{(0)}(s1)
+# 'riskP' returns the value of P{Y(0)=1 | S(1)=s1}
 # s1 is a scalar
-riskP <- function(s1, data, tpsFit, npcdensFit1, npcdensFit2, changePoint){
+# all baseline covariates are assumed to be discrete variables with a finite number of categories
+# 'formula' is a one-sided formula of baseline covariates
+riskP <- function(s1, formula, data, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
   den <- num <- 0
-  UL <- max(data$S, na.rm=TRUE) + 0.2 # if integration over (0,Inf) fails, use (0,UL)
+  UL <- 1.1 * max(data$S, na.rm=TRUE) # if integration over (0,Inf) fails, use (0,UL)
 
-  for (age in levels(as.factor(data$AGE))){
-    for (country in levels(as.factor(data$COUNTRY))){
-      pX <- propX(x.age=age, x.country=country, data=data)
-      hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, x.age=age, x.country=country, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
-      if (inherits(hNumInt, 'try-error')){
-        num <- num + pX*integrate(hNum, 0, UL, s1=s1, x.age=age, x.country=country, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
-      } else {
-        num <- num + pX*hNumInt
-      }
-      den <- den + pX*integrate(hDen, 0, UL, s1=s1, x.age=age, x.country=country, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
+  mf <- model.frame(formula, data)
+  X <- model.matrix(terms(formula), mf)
+  Xu <- unique(X)
+  vars <- all.vars(formula)
+  tmp <- NULL
+  for (i in 1:NROW(Xu)){
+    lev <- drop(Xu[i,])
+    names(lev) <- colnames(Xu)
+    lev1names <- names(which(lev==1))
+    pX <- propX(X, lev1names)
+    tmp <- c(tmp, pX)
+    hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, lev=lev, vars=vars, data=data, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
+    if (inherits(hNumInt, 'try-error')){
+      num <- num + pX*integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
+    } else {
+      num <- num + pX*hNumInt
     }
+    den <- den + pX*integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
   }
 
-  return(num/den)
+  return(list(num/den,tmp))
 }
 
-# 'riskV' returns the value of risk_{(1)}(s1)
+# 'riskV' returns the value of P{Y(1)=1 | S(1)=s1}
 # s1 is a scalar
-riskV <- function(s1, data, dataI, changePoint){
-  nVControls <- NROW(subset(data, Z==1 & Y==0))
-  nVCases <- NROW(subset(data, Z==1 & Y==1))
-  group <- rep(1, NROW(subset(dataI, Z==1 & !is.na(Y))))
-  fit <- tps(Y ~ Sc, data=subset(dataI, Z==1 & !is.na(Y)), nn0=nVControls, nn1=nVCases, group=group, method="PL", cohort=TRUE)
-  return(tpsPredict(fit, cbind(1, ifelse(s1>changePoint,s1-changePoint,0))))
+riskV <- function(s1, data, data2, changePoint=NULL){
+  nTControls <- NROW(subset(data, Z==1 & Y==0))
+  nTCases <- NROW(subset(data, Z==1 & Y==1))
+  tpsFormula <- paste0("Y~",ifelse(is.null(changePoint),"S","Sc"))
+  fit <- tps(tpsFormula, data=subset(data2, Z==1 & !is.na(Y)), nn0=nTControls, nn1=nTCases, group=rep(1, NROW(subset(data2, Z==1 & !is.na(Y)))), method="PL", cohort=TRUE)
+  if (!is.null(changePoint)){ s1 <- ifelse(s1>changePoint,s1-changePoint,0) }
+  return(tpsPredict(fit, cbind(1, s1)))
 }
 
-# 'risk' returns the estimates of risk in each treatment arm for a given s1
+# 'risk' returns the estimates of risk in each study group for a given s1
 # s1 is a scalar
-risk <- function(s1, data, dataI, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
-  risk1 <- riskV(s1, data, dataI, changePoint)
-  risk0 <- riskP(s1, data, tpsFit, npcdensFit1, npcdensFit2, changePoint)
+risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
+  risk1 <- riskV(s1, data, data2, changePoint)
+  risk0 <- riskP(s1, formula, data, tpsFit, npcdensFit1, npcdensFit2, changePoint)
   return(list(plaRisk=risk0, txRisk=risk1))
 }
 
@@ -326,8 +384,13 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
   rm(dataPControls2); rm(dataPCases2); rm(dataTControls2); rm(dataTCases2)
 
   # estimate optimal bandwidths for kernel estimates of the conditional densities
-  fbw <- npcdensbw(as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+"))), data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
-  gbw <- npcdensbw(as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+"))), data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  # fbw <- npcdensbw(as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+"))), data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  # save(fbw, file="h:/SCHARP/Sanofi/manuscript_VEcurveMethod/code/test_pseval2/fbw.RData")
+  # gbw <- npcdensbw(as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+"))), data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  # save(gbw, file="h:/SCHARP/Sanofi/manuscript_VEcurveMethod/code/test_pseval2/gbw.RData")
+
+  load("h:/SCHARP/Sanofi/manuscript_VEcurveMethod/code/test_pseval2/fbw.RData")
+  load("h:/SCHARP/Sanofi/manuscript_VEcurveMethod/code/test_pseval2/gbw.RData")
 
   if (hinge){
     # calculate weights for passing on to 'chngptm'
@@ -375,12 +438,16 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
   }
 
   # the first argument of 'risk' is a scalar
-  curves <- lapply(biomarkerGrid, function(s){ risk(s, data, data2, fit1, fhat, ghat, cpoint) })
+  curves <- lapply(biomarkerGrid, function(s){ risk(s, as.formula(paste0("~",paste(formulaDecomp[[2]][-1],collapse="+"))), data, data2, fit1, fhat, ghat, cpoint) })
   plaRiskCurve <- sapply(curves, "[[", "plaRisk")
   txRiskCurve <- sapply(curves, "[[", "txRisk")
 
   # the output list
-  oList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve, cpointP=cpointP, cpointV=cpointV, fOptBandwidths=fbw, gOptBandwidths=gbw)
+  oList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve, fOptBandwidths=fbw, gOptBandwidths=gbw)
+  if (hinge){
+    oList$cpointP <- cpointP
+    oList$cpointT <- cpointT
+  }
 
   if (!is.null(saveFile)){
     save(oList, file=file.path(saveDir, saveFile))
@@ -737,11 +804,11 @@ npcdensbw.formula <- function (formula, data, subset, na.action, call, ...){
     mf[[2]] <- call[[i]]
   }
   mf[[1]] <- as.name("model.frame")
-  if (m[2] > 0) { # use data as environment
-    mf[["formula"]] = eval(mf[[m[1]]], environment(mf[[m[2]]]))
-  } else { # use parent frame
-    mf[["formula"]] = eval(mf[[m[1]]], parent.frame())
-  }
+  #if (m[2] > 0) { # use data as environment
+  #  mf[["formula"]] = eval(mf[[m[1]]], environment(mf[[m[2]]]))
+  #} else { # use parent frame
+  mf[["formula"]] = eval(mf[[m[1]]], parent.frame())
+  #}
   variableNames <- np:::explodeFormula(mf[["formula"]])
   varsPlus <- lapply(variableNames, paste, collapse = " + ")
   mf[["formula"]] <- as.formula(paste(" ~ ", varsPlus[[1]],
