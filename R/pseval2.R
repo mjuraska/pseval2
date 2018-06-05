@@ -39,16 +39,16 @@ hNum <- function(s0, s1, x.age, x.country, tpsFit, changePoint, npcdensFit1, npc
                                       as.numeric(x.country=="COL"), as.numeric(x.country=="HND"), as.numeric(x.country=="IND"), as.numeric(x.country=="MEX"),
                                       as.numeric(x.country=="MYS"), as.numeric(x.country=="PHL"), as.numeric(x.country=="PRI"),as.numeric(x.country=="THA"),
                                       as.numeric(x.country=="VNM")))
-  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(bAUC=s0, AGE=x.age, COUNTRY=x.country, IMPSTLOG.AUCMB=s1))
-  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(AGE=x.age, COUNTRY=x.country, IMPSTLOG.AUCMB=s0))
+  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, AGE=x.age, COUNTRY=x.country, S=s1))
+  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(AGE=x.age, COUNTRY=x.country, S=s0))
   return(phat.s0*fhat.s0*ghat.s0)
 }
 
 # 'hDen' returns function values at s0 of the integrand in the denominator of risk_{(0)}(s_1)
 # s0 is a numeric vector, whereas s1, x.age, x.country are scalars
 hDen <- function(s0, s1, x.age, x.country, npcdensFit1, npcdensFit2){
-  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(bAUC=s0, AGE=x.age, COUNTRY=x.country, IMPSTLOG.AUCMB=s1))
-  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(AGE=x.age, COUNTRY=x.country, IMPSTLOG.AUCMB=s0))
+  fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, AGE=x.age, COUNTRY=x.country, S=s1))
+  ghat.s0 <- predict(npcdensFit2, newdata=data.frame(AGE=x.age, COUNTRY=x.country, S=s0))
   return(fhat.s0*ghat.s0)
 }
 
@@ -61,7 +61,7 @@ propX <- function(x.age, x.country, data){
 # s1 is a scalar
 riskP <- function(s1, data, tpsFit, npcdensFit1, npcdensFit2, changePoint){
   den <- num <- 0
-  UL <- max(data$IMPSTLOG.AUCMB, na.rm=TRUE) + 0.2 # if integration over (0,Inf) fails, use (0,UL)
+  UL <- max(data$S, na.rm=TRUE) + 0.2 # if integration over (0,Inf) fails, use (0,UL)
 
   for (age in levels(as.factor(data$AGE))){
     for (country in levels(as.factor(data$COUNTRY))){
@@ -81,22 +81,18 @@ riskP <- function(s1, data, tpsFit, npcdensFit1, npcdensFit2, changePoint){
 
 # 'riskV' returns the value of risk_{(1)}(s1)
 # s1 is a scalar
-riskV <- function(s1, data, dataI, markerName, changePoint){
-  if (markerName %in% c("AUC","Min")){
-    nVControls <- NROW(subset(data, VACC==1 & ofstatus_m13==0))
-  } else {
-    nVControls <- NROW(subset(data, VACC==1 & ofstatus_m0==0))
-  }
-  nVCases <- NROW(subset(data, VACC==1 & ofstatus_m13==1))
-  group <- rep(1, NROW(subset(dataI, VACC==1 & !is.na(ofstatus_m13))))
-  fit <- tps(ofstatus_m13 ~ IMPSTLOG.AUCMB.trunc, data=subset(dataI, VACC==1 & !is.na(ofstatus_m13)), nn0=nVControls, nn1=nVCases, group=group, method="PL", cohort=TRUE)
+riskV <- function(s1, data, dataI, changePoint){
+  nVControls <- NROW(subset(data, Z==1 & Y==0))
+  nVCases <- NROW(subset(data, Z==1 & Y==1))
+  group <- rep(1, NROW(subset(dataI, Z==1 & !is.na(Y))))
+  fit <- tps(Y ~ Sc, data=subset(dataI, Z==1 & !is.na(Y)), nn0=nVControls, nn1=nVCases, group=group, method="PL", cohort=TRUE)
   return(tpsPredict(fit, cbind(1, ifelse(s1>changePoint,s1-changePoint,0))))
 }
 
 # 'risk' returns the estimates of risk in each treatment arm for a given s1
 # s1 is a scalar
-risk <- function(s1, data, dataI, tpsFit, npcdensFit1, npcdensFit2, markerName, changePoint=NULL){
-  risk1 <- riskV(s1, data, dataI, markerName, changePoint)
+risk <- function(s1, data, dataI, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
+  risk1 <- riskV(s1, data, dataI, changePoint)
   risk0 <- riskP(s1, data, tpsFit, npcdensFit1, npcdensFit2, changePoint)
   return(list(plaRisk=risk0, txRisk=risk1))
 }
@@ -271,7 +267,8 @@ bRiskCurve <- function(data, markerName, iter, saveFile=NULL, saveDir=NULL, seed
 #' @param tx a character string specifying the variable name representing the treatment group indicator
 #' @param hinge shall a hinge model be used?
 #' @param weights either a numeric vector of weights with values corresponding to rows in \code{data} or a character string specifying the variable name in \code{data}. The weights are passed on to GLMs.
-riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, saveFile=NULL, saveDir=NULL){
+#' @param biomarkerGrid a numeric vector of biomarker values at which the risk curves are evaluated and returned
+riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
@@ -285,24 +282,20 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, saveFil
     }
   }
 
-  mf <- model.frame(formula, data)
-  mt <- attr(mf, "terms")
-  # a character vector of variable names on the RHS of 'formula'
-  # used to obtain the name of the first variable on the RHS of 'formula'
-  varNames <- attr(mt, "term.labels")
+  formulaDecomp <- strsplit(strsplit(paste(deparse(formula), collapse = ""), " *[~] *")[[1]], " *[+] *")
 
   # standardize the variable name for the treatment group indicator
   colnames(data)[colnames(data)==tx] <- "Z"
 
   # standardize the variable name for the biomarker measurement at fixed time t0 post-randomization
   # this line assumes that it is the first listed variable on the RHS of 'formula'
-  colnames(data)[colnames(data)==varNames[1]] <- "S"
+  colnames(data)[colnames(data)==formulaDecomp[[2]][1]] <- "S"
 
   # standardize the variable name for the biomarker's baseline measurement
   colnames(data)[colnames(data)==bsm] <- "Sb"
 
   # standardize the variable name for the binary clinical endpoint measured after t0
-  colnames(data)[colnames(data)==all.vars(formula)[1]] <- "Y"
+  colnames(data)[colnames(data)==formulaDecomp[[1]]] <- "Y"
 
   # extract the subset with available phase 2 data (i.e., with measured S)
   data2 <- subset(data, !is.na(S))
@@ -333,8 +326,8 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, saveFil
   rm(dataPControls2); rm(dataPCases2); rm(dataTControls2); rm(dataTCases2)
 
   # estimate optimal bandwidths for kernel estimates of the conditional densities
-  fbw <- npcdensbw(as.formula(paste0("S ~ ",sub(varNames[1],"Sb",deparse(formula[[3]])))), data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
-  gbw <- npcdensbw(as.formula(paste0("S ~ ",substring(deparse(formula[[3]]), first=nchar(varNames[1])+4))), data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  fbw <- npcdensbw(as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+"))), data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  gbw <- npcdensbw(as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+"))), data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
 
   if (hinge){
     # calculate weights for passing on to 'chngptm'
@@ -349,7 +342,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, saveFil
     }
 
     # in each study group separately, estimate the hinge point for the association of S with Y
-    cpointP <- chngptm(formula.1=as.formula(paste0("Y ~ ",substring(deparse(formula[[3]]), first=nchar(varNames[1])+4))), formula.2=~S, data=subset(data2, Z==0 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
+    cpointP <- chngptm(formula.1=as.formula(paste0("Y ~ ",paste(formulaDecomp[[2]][-1],collapse="+"))), formula.2=~S, data=subset(data2, Z==0 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
     cpointT <- chngptm(formula.1=Y ~ 1, formula.2=~S, data=subset(data2, Z==1 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
     # use their minimum as the hinge point in the below specified GLMs
     cpoint <- min(cpointP, cpointT)
@@ -361,13 +354,13 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, saveFil
     data2 <- subset(data, !is.na(S))
 
     # IPW logistic regression model fitted to placebo recipients in the phase 2 subset accounting for two-phase sampling of S
-    fit1 <- tps(as.formula(paste0("Y ~ ",sub(varNames[1],"Sc",deparse(formula[[3]])))), data=subset(data2, Z==0 & !is.na(Y)), nn0=nPControls, nn1=nPCases, group=rep(1, NROW(subset(data2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
+    fit1 <- tps(as.formula(paste0("Y ~ ",paste(c("Sc",formulaDecomp[[2]][-1]),collapse="+"))), data=subset(data2, Z==0 & !is.na(Y)), nn0=nPControls, nn1=nPCases, group=rep(1, NROW(subset(data2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
   } else {
     # for passing on to the function 'risk'
     cpoint <- NULL
 
     # IPW logistic regression model fitted to placebo recipients in the phase 2 subset accounting for two-phase sampling of S
-    fit1 <- tps(as.formula(paste0("Y ~ ",sub(varNames[1],"S",deparse(formula[[3]])))), data=subset(data2, Z==0 & !is.na(Y)), nn0=nPControls, nn1=nPCases, group=rep(1, NROW(subset(data2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
+    fit1 <- tps(as.formula(paste0("Y ~ ",paste(c("S",formulaDecomp[[2]][-1]),collapse="+"))), data=subset(data2, Z==0 & !is.na(Y)), nn0=nPControls, nn1=nPCases, group=rep(1, NROW(subset(data2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
   }
 
   # kernel density estimator for f(s1|Sb=s0, X=x) using the treatment group in the phase 2 subset
@@ -377,15 +370,17 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, saveFil
   ghat <- npcdens(gbw)
 
   # a grid of values of S on which the estimated risk curves are returned
-  Sgrid <- seq(min(data2$S), max(data2$S), length.out==200)
+  if (is.null(biomarkerGrid)){
+    biomarkerGrid <- seq(min(data2$S), max(data2$S), length.out==200)
+  }
 
   # the first argument of 'risk' is a scalar
-  curves <- lapply(Sgrid, function(s){ risk(s, data, data2, fit1, fhat, ghat, Sgrid, cpoint) })
+  curves <- lapply(biomarkerGrid, function(s){ risk(s, data, data2, fit1, fhat, ghat, cpoint) })
   plaRiskCurve <- sapply(curves, "[[", "plaRisk")
   txRiskCurve <- sapply(curves, "[[", "txRisk")
 
   # the output list
-  oList <- list(Sgrid=Sgrid, plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve, cpointP=cpointP, cpointV=cpointV, fOptBandwidths=fbw, gOptBandwidths=gbw)
+  oList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve, cpointP=cpointP, cpointV=cpointV, fOptBandwidths=fbw, gOptBandwidths=gbw)
 
   if (!is.null(saveFile)){
     save(oList, file=file.path(saveDir, saveFile))
@@ -721,4 +716,64 @@ applyBoot <- function(loadFile, saveFile, saveDir){
   LB <- apply(bVE, 2, quantile, probs=0.025, na.rm=TRUE)
   bList <- list(s=s, UB=UB, LB=LB)
   save(bList, file=file.path(saveDir,saveFile))
+}
+
+npcdensbw.formula <- function (formula, data, subset, na.action, call, ...){
+  orig.class <- if (missing(data))
+    sapply(eval(attr(terms(formula), "variables"), environment(formula)),
+           class)
+  else sapply(eval(attr(terms(formula), "variables"), data,
+                   environment(formula)), class)
+  mf <- match.call(expand.dots = FALSE)
+  m <- match(c("formula", "data", "subset", "na.action"), names(mf),
+             nomatch = 0)
+  mf <- mf[c(1, m)]
+  if (!missing(call) && is.call(call)) {
+    for (i in 1:length(call)) {
+      if (tryCatch(class(eval(call[[i]])) == "formula",
+                   error = function(e) FALSE))
+        break
+    }
+    mf[[2]] <- call[[i]]
+  }
+  mf[[1]] <- as.name("model.frame")
+  if (m[2] > 0) { # use data as environment
+    mf[["formula"]] = eval(mf[[m[1]]], environment(mf[[m[2]]]))
+  } else { # use parent frame
+    mf[["formula"]] = eval(mf[[m[1]]], parent.frame())
+  }
+  variableNames <- np:::explodeFormula(mf[["formula"]])
+  varsPlus <- lapply(variableNames, paste, collapse = " + ")
+  mf[["formula"]] <- as.formula(paste(" ~ ", varsPlus[[1]],
+                                      " + ", varsPlus[[2]]), env = environment(formula))
+  mf[["formula"]] <- terms(mf[["formula"]])
+  if (all(orig.class == "ts")) {
+    args <- (as.list(attr(mf[["formula"]], "variables"))[-1])
+    attr(mf[["formula"]], "predvars") <- as.call(c(quote(as.data.frame),
+                                                   as.call(c(quote(ts.intersect), args))))
+  }
+  else if (any(orig.class == "ts")) {
+    arguments <- (as.list(attr(mf[["formula"]], "variables"))[-1])
+    arguments.normal <- arguments[which(orig.class != "ts")]
+    arguments.timeseries <- arguments[which(orig.class ==
+                                              "ts")]
+    ix <- sort(c(which(orig.class == "ts"), which(orig.class !=
+                                                    "ts")), index.return = TRUE)$ix
+    attr(mf[["formula"]], "predvars") <- bquote(.(as.call(c(quote(cbind),
+                                                            as.call(c(quote(as.data.frame), as.call(c(quote(ts.intersect),
+                                                                                                      arguments.timeseries)))), arguments.normal, check.rows = TRUE)))[,
+                                                                                                                                                                       .(ix)])
+  }
+  mf <- eval(mf, parent.frame())
+  ydat <- mf[, variableNames[[1]], drop = FALSE]
+  xdat <- mf[, variableNames[[2]], drop = FALSE]
+  tbw = npcdensbw(xdat = xdat, ydat = ydat, ...)
+  tbw$call <- match.call(expand.dots = FALSE)
+  environment(tbw$call) <- parent.frame()
+  tbw$formula <- formula
+  tbw$rows.omit <- as.vector(attr(mf, "na.action"))
+  tbw$nobs.omit <- length(tbw$rows.omit)
+  tbw$terms <- attr(mf, "terms")
+  tbw$variableNames <- variableNames
+  tbw
 }
