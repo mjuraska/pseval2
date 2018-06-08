@@ -167,156 +167,212 @@ risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, cha
 # 'saveFile' is the name of the .RData file where the output list will be stored
 # 'saveDir' specifies the output directory
 # 'seed' is an integer for set.seed()
-bRiskCurve <- function(data, markerName, iter, saveFile=NULL, saveDir=NULL, seed=NULL){
-  # so that the below generic code can be used for each marker
-  if (markerName!="AUC"){
-    if (markerName=="Min"){  # assumes that there exist variables 'bMin' and 'IMPSTLOG.Min'
-      data$bAUC <- data$bMin
-      data$IMPSTLOG.AUCMB <- data$IMPSTLOG.Min
+bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, saveFile=NULL, saveDir=NULL, seed=NULL){
+  if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
+  if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
+  if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
+  if (missing(iter)){ stop("The number of bootstrap iterations in argument 'iter' is missing.") }
+
+  if (!is.null(weights)){
+    if (is.character(weights)){
+      colnames(data)[colnames(data)==weights] <- "weights"
     } else {
-      data$ofstatus_m0 <- data[,paste0(tolower(markerName),"fstatus_m0")]
-      data$ofstatus_m13 <- data[,paste0(tolower(markerName),"fstatus_m13")]
-      data$oftime_m13 <- data[,paste0(tolower(markerName),"ftime_m13")]
-      data$bAUC <- data[,paste0("b",markerName)]
-      data$IMPSTLOG.AUCMB <- data[,paste0("IMPSTLOG.Sero",substr(markerName, start=2, stop=2))]
+      # assuming 'weights' is a numeric vector
+      data$weights <- weights
     }
   }
-  # extract the immunogenicity set
-  dataI <- subset(data, !is.na(IMPSTLOG.AUCMB))
 
-  # compute the change point for the association of the marker with the dengue disease risk in both the placebo and vaccine groups and consider their minimum
-  # as the change point in subsequent logistic regression models
-  # use the same change point for each bootstrap sample
-  cpointP <- chngptm(formula.1=ofstatus_m13 ~ factor(AGE) + factor(COUNTRY), formula.2=~IMPSTLOG.AUCMB, data=subset(dataI, VACC==0 & !is.na(ofstatus_m13)), family="binomial", type="hinge", prob.weights=wts)$coefficients["chngpt"]
-  cpointV <- chngptm(formula.1=ofstatus_m13 ~ 1, formula.2=~IMPSTLOG.AUCMB, data=subset(dataI, VACC==1 & !is.na(ofstatus_m13)), family="binomial", type="hinge", prob.weights=wts)$coefficients["chngpt"]
-  cpoint <- min(cpointP, cpointV)
+  formulaDecomp <- strsplit(strsplit(paste(deparse(formula), collapse = ""), " *[~] *")[[1]], " *[+] *")
+  anyBaselineCovar <- length(formulaDecomp[[2]])>1
 
-  # the truncated version of IMPSTLOG.AUCMB based on the change point 'cpoint' is used in all subsequent logistic regression models of the dengue disease risk
-  data$IMPSTLOG.AUCMB.trunc <- with(data, ifelse(IMPSTLOG.AUCMB>cpoint, IMPSTLOG.AUCMB-cpoint, 0))
+  # standardize the variable name for the treatment group indicator
+  colnames(data)[colnames(data)==tx] <- "Z"
 
-  # re-extract the immunogenicity set to include IMPSTLOG.AUCMB.trunc
-  dataI <- subset(data, !is.na(IMPSTLOG.AUCMB))
+  # standardize the variable name for the biomarker measurement at fixed time t0 post-randomization
+  # this line assumes that it is the first listed variable on the RHS of 'formula'
+  colnames(data)[colnames(data)==formulaDecomp[[2]][1]] <- "S"
 
-  # extract subsets of controls ('dataControls') and cases ('dataCases') to be used for resampling
-  # in addition, within each treatment group in the immunogenicity set, delete cases to recover
-  # the case:control ratio in the ITT set at-risk at month 13 with no prior infection
-  dataControls <- subset(data, ofstatus_m0==0)
-  nPControlsI <- NROW(dataPControlsI <- subset(dataI, VACC==0 & ofstatus_m0==0))
-  nVControlsI <- NROW(dataVControlsI <- subset(dataI, VACC==1 & ofstatus_m0==0))
+  # standardize the variable name for the biomarker's baseline measurement
+  colnames(data)[colnames(data)==bsm] <- "Sb"
 
-  dataCases <- subset(data, ofstatus_m13==1)
-  nPCasesI <- NROW(dataPCasesI <- subset(dataI, VACC==0 & ofstatus_m13==1))
-  nVCasesI <- NROW(dataVCasesI <- subset(dataI, VACC==1 & ofstatus_m13==1))
+  # standardize the variable name for the binary clinical endpoint measured after t0
+  colnames(data)[colnames(data)==formulaDecomp[[1]]] <- "Y"
 
-  nPControls <- NROW(subset(dataControls, VACC==0))
-  nVControls <- NROW(subset(dataControls, VACC==1))
-  nPCases <- NROW(subset(dataCases, VACC==0))
-  nVCases <- NROW(subset(dataCases, VACC==1))
+  # extract the subset with available phase 2 data (i.e., with measured S)
+  data2 <- subset(data, !is.na(S))
 
-  # within each treatment group, calculate the number of cases in the immunogenicity set needed to achieve
-  # the correct case:control ratio
-  nPCasesInew <- nPCases * nPControlsI / nPControls
-  nVCasesInew <- nVCases * nVControlsI / nVControls
-
-  # within each treatment group, sample as many cases in the immunogenicity set as needed to achieve
-  # the correct case:control ratio
-  dataPIcorrectRatio <- rbind(dataPControlsI, dataPCasesI[sample(1:nPCasesI, nPCasesInew),])
-  dataVIcorrectRatio <- rbind(dataVControlsI, dataVCasesI[sample(1:nVCasesI, nVCasesInew),])
-  rm(dataPControlsI); rm(dataPCasesI); rm(dataVControlsI); rm(dataVCasesI)
-
-  # the overall numbers of controls and cases for resampling
+  # case deletion method applied to 'data2' to match the case:control ratio in 'data', separately in each study group,
+  # in order to be able to use the standard kernel density estimation procedure
+  dataControls <- subset(data, Y==0)
   nControls <- NROW(dataControls)
-  nCases <- NROW(dataCases)
+  nPControls <- NROW(subset(dataControls, Z==0))
+  nTControls <- NROW(subset(dataControls, Z==1))
 
-  # estimate the optimal bandwidths for kernel density estimation and use these in each bootstrap run
-  # RUNS SLOWLY!
-  fbw <- npcdensbw(IMPSTLOG.AUCMB ~ bAUC + factor(AGE) + factor(COUNTRY), data=dataVIcorrectRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
-  gbw <- npcdensbw(IMPSTLOG.AUCMB ~ factor(AGE) + factor(COUNTRY), data=dataPIcorrectRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
-  rm(dataPIcorrectRatio); rm(dataVIcorrectRatio)
+  nPControls2 <- NROW(dataPControls2 <- subset(data2, Z==0 & Y==0))
+  nTControls2 <- NROW(dataTControls2 <- subset(data2, Z==1 & Y==0))
+
+  dataCases <- subset(data, Y==1)
+  nCases <- NROW(dataCases)
+  nPCases <- NROW(subset(dataCases, Z==0))
+  nTCases <- NROW(subset(dataCases, Z==1))
+
+  nPCases2 <- NROW(dataPCases2 <- subset(data2, Z==0 & Y==1))
+  nTCases2 <- NROW(dataTCases2 <- subset(data2, Z==1 & Y==1))
+
+  # in each study group separately, calculate the required number of cases in 'data2' to match the case:control ratio in 'data'
+  nPCases2new <- nPCases * nPControls2 / nPControls
+  nTCases2new <- nTCases * nTControls2 / nTControls
+
+  # in each study group separately, randomly sample cases to match the case:control ratio in 'data'
+  dataP2correctRatio <- rbind(dataPControls2, dataPCases2[sample(1:nPCases2, max(1,round(nPCases2new,0))),])
+  dataT2correctRatio <- rbind(dataTControls2, dataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
+  rm(dataPControls2); rm(dataPCases2); rm(dataTControls2); rm(dataTCases2)
+
+  # estimate optimal bandwidths for kernel estimates of the conditional densities
+  if (anyBaselineCovar){
+    fm.fbw <- as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+")))
+    fm.gbw <- as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
+    gbw <- npcdensbw(fm.gbw, data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  } else {
+    fm.fbw <- S ~ Sb
+    fm.gbw <- ~ S
+    # marginal density
+    gbw <- npudensbw(fm.gbw, data=dataP2correctRatio, ckertype="epanechnikov")
+  }
+  fbw <- npcdensbw(fm.fbw, data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
 
   if(!is.null(seed)){ set.seed(seed) }
   bSampleControls <- matrix(sample(1:nControls, nControls*iter, replace=TRUE), nrow=nControls, ncol=iter)
   bSampleCases <- matrix(sample(1:nCases, nCases*iter, replace=TRUE), nrow=nCases, ncol=iter)
 
-  markerVals <- seq(min(dataI$IMPSTLOG.AUCMB), max(dataI$IMPSTLOG.AUCMB), by=0.05)
+  # a grid of values of S on which the bootstrapped risk curves are returned
+  if (is.null(biomarkerGrid)){
+    biomarkerGrid <- seq(min(data2$S), max(data2$S), length.out=200)
+  }
+  rm(data2)
 
-  # 'bVE' is a list each of whose components is also a list with components:
-  # 'VEcurve' - a vector with VE(s) estimates (a single curve)
-  # 'bnI'     -  the size of the bootstrapped immunogenicity set
   bRiskCurveList <- lapply(1:iter, function(i){
     # create a bootstrap sample
     bdata <- rbind(dataControls[bSampleControls[,i],], dataCases[bSampleCases[,i],])
-    # extract the bootstrapped immunogenicity set
-    bdataI <- subset(bdata, !is.na(IMPSTLOG.AUCMB))
+    # extract the bootstrap subset with phase 2 data
+    bdata2 <- subset(bdata, !is.na(S))
 
-    # compute the change point for the association of the marker with the dengue disease risk in both the placebo and vaccine groups and consider their minimum
-    # as the change point in subsequent logistic regression models
-    # use the same change point for each bootstrap sample
-    bcpointP <- chngptm(formula.1=ofstatus_m13 ~ factor(AGE) + factor(COUNTRY), formula.2=~IMPSTLOG.AUCMB, data=subset(bdataI, VACC==0 & !is.na(ofstatus_m13)), family="binomial", type="hinge", prob.weights=wts)$coefficients["chngpt"]
-    bcpointV <- chngptm(formula.1=ofstatus_m13 ~ 1, formula.2=~IMPSTLOG.AUCMB, data=subset(bdataI, VACC==1 & !is.na(ofstatus_m13)), family="binomial", type="hinge", prob.weights=wts)$coefficients["chngpt"]
-    bcpoint <- min(bcpointP, bcpointV)
+    # estimate the hinge point in each bootstrap iteration
+    if (hinge){
+      # recalculate weights in each bootstrap iteration for passing on to 'chngptm'
+      if (is.null(weights)){
+        nControls2 <- NROW(subset(bdata2, Y==0))
+        nCases2 <- NROW(subset(bdata2, Y==1))
 
-    # the truncated version of IMPSTLOG.AUCMB based on the change point 'cpoint' is used in all subsequent logistic regression models of the dengue disease risk
-    bdata$IMPSTLOG.AUCMB.trunc <- with(bdata, ifelse(IMPSTLOG.AUCMB>bcpoint, IMPSTLOG.AUCMB-bcpoint, 0))
+        bdata2$weights <- ifelse(bdata2$Y==1, nCases/nCases2, nControls/nControls2)
+      }
 
-    # re-extract the immunogenicity set to include IMPSTLOG.AUCMB.trunc
-    bdataI <- subset(bdata, !is.na(IMPSTLOG.AUCMB))
+      # in each study group separately, estimate the hinge point for the association of S with Y
+      if (anyBaselineCovar){
+        fm <- as.formula(paste0("Y ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
+      } else {
+        fm <- Y ~ 1
+      }
+      cpointP <- chngptm(formula.1=fm, formula.2=~S, data=subset(bdata2, Z==0 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
+      cpointT <- chngptm(formula.1=Y ~ 1, formula.2=~S, data=subset(bdata2, Z==1 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
+      # use their minimum as the hinge point in the below specified GLMs
+      cpoint <- min(cpointP, cpointT)
 
-    bdataControls <- subset(bdata, ofstatus_m0==0)
-    nPControlsI <- NROW(bdataPControlsI <- subset(bdataI, VACC==0 & ofstatus_m0==0))
-    nVControlsI <- NROW(bdataVControlsI <- subset(bdataI, VACC==1 & ofstatus_m0==0))
+      # biomarker S left-censored at 'cpoint' for use in the below specified GLMs
+      bdata$Sc <- with(bdata, ifelse(S>cpoint, S-cpoint, 0))
 
-    bdataCases <- subset(bdata, ofstatus_m13==1)
-    nPCasesI <- NROW(bdataPCasesI <- subset(bdataI, VACC==0 & ofstatus_m13==1))
-    nVCasesI <- NROW(bdataVCasesI <- subset(bdataI, VACC==1 & ofstatus_m13==1))
+      # re-extract the subset with phase 2 data
+      bdata2 <- subset(bdata, !is.na(S))
 
-    nPControls <- NROW(subset(bdataControls, VACC==0))
-    nVControls <- NROW(subset(bdataControls, VACC==1))
-    nPCases <- NROW(subset(bdataCases, VACC==0))
-    nVCases <- NROW(subset(bdataCases, VACC==1))
+      # IPW logistic regression model fitted to placebo recipients in the phase 2 subset accounting for two-phase sampling of S
+      if (anyBaselineCovar){
+        fm <- as.formula(paste0("Y ~ ",paste(c("Sc",formulaDecomp[[2]][-1]),collapse="+")))
+      } else {
+        fm <- Y ~ Sc
+      }
+      fit1 <- tps(fm, data=subset(bdata2, Z==0 & !is.na(Y)), nn0=NROW(subset(bdata, Z==0 & Y==0)), nn1=NROW(subset(bdata, Z==0 & Y==1)), group=rep(1, NROW(subset(bdata2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
+    } else {
+      # for passing on to the function 'risk'
+      cpoint <- NULL
 
-    # within each treatment group, calculate the number of cases in the bootstrapped immunogenicity set
-    # needed to achieve the correct case:control ratio
-    nPCasesInew <- nPCases * nPControlsI / nPControls
-    nVCasesInew <- nVCases * nVControlsI / nVControls
+      # IPW logistic regression model fitted to placebo recipients in the phase 2 subset accounting for two-phase sampling of S
+      if (anyBaselineCovar){
+        fm <- as.formula(paste0("Y ~ ",paste(c("S",formulaDecomp[[2]][-1]),collapse="+")))
+      } else {
+        fm <- Y ~ S
+      }
+      fit1 <- tps(fm, data=subset(bdata2, Z==0 & !is.na(Y)), nn0=NROW(subset(bdata, Z==0 & Y==0)), nn1=NROW(subset(bdata, Z==0 & Y==1)), group=rep(1, NROW(subset(bdata2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
+    }
 
-    # within each treatment group, sample as many cases in the bootstrapped immunogenicity set as needed
-    # to achieve the correct case:control ratio
-    bdataPIcorrectRatio <- rbind(bdataPControlsI, bdataPCasesI[sample(1:nPCasesI, nPCasesInew),])
-    bdataVIcorrectRatio <- rbind(bdataVControlsI, bdataVCasesI[sample(1:nVCasesI, nVCasesInew),])
-    rm(bdataPControlsI); rm(bdataPCasesI); rm(bdataVControlsI); rm(bdataVCasesI)
+    bdataControls <- subset(bdata, Y==0)
+    nPControls2 <- NROW(bdataPControls2 <- subset(bdata2, Z==0 & Y==0))
+    nTControls2 <- NROW(bdataTControls2 <- subset(bdata2, Z==1 & Y==0))
 
-    group <- rep(1, NROW(subset(bdataI, VACC==0)))
+    bdataCases <- subset(bdata, Y==1)
+    nPCases2 <- NROW(bdataPCases2 <- subset(bdata2, Z==0 & Y==1))
+    nTCases2 <- NROW(bdataTCases2 <- subset(bdata2, Z==1 & Y==1))
 
-    # weighted logistic regression model using the placebo group in the bootstrapped immunogenicity set
-    fit1 <- tps(ofstatus_m13 ~ IMPSTLOG.AUCMB.trunc + factor(AGE) + factor(COUNTRY), data=subset(bdataI, VACC==0), nn0=nPControls, nn1=nPCases, group=group, method="PL", cohort=TRUE)
+    nPControls <- NROW(subset(bdataControls, Z==0))
+    nTControls <- NROW(subset(bdataControls, Z==1))
+    nPCases <- NROW(subset(bdataCases, Z==0))
+    nTCases <- NROW(subset(bdataCases, Z==1))
 
-    # kernel density estimator for f(s1|S_base=sbase, X=x) using the vaccine group in the bootstrapped immunogenicity set
-    bfbw <- npcdensbw(IMPSTLOG.AUCMB ~ bAUC + factor(AGE) + factor(COUNTRY), data=bdataVIcorrectRatio, bws=fbw, bandwidth.compute=FALSE)
+    # in each study group separately, recalculate the required number of cases in 'bdata2' to match the case:control ratio in 'bdata'
+    nPCasesInew <- nPCases * nPControls2 / nPControls
+    nVCasesInew <- nVCases * nVControls2 / nVControls
+
+    # in each study group separately, randomly sample cases to match the case:control ratio in 'bdata'
+    bdataP2correctRatio <- rbind(bdataPControls2, bdataPCases2[sample(1:nPCases2, max(1,round(nPCases2new,0))),])
+    bdataT2correctRatio <- rbind(bdataTControls2, bdataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
+    rm(bdataPControls2); rm(bdataPCases2); rm(bdataTControls2); rm(bdataTCases2)
+
+    # kernel density estimator for f(s1|Sb=s0, X=x) using the treatment group in the phase 2 subset
+    bfbw <- npcdensbw(fm.fbw, data=bdataT2correctRatio, bws=fbw, bandwidth.compute=FALSE)
     fhat <- npcdens(bfbw)
 
-    # kernel density estimator for g(s0|X=x) using the placebo group in the bootstrapped immunogenicity set
-    bgbw <- npcdensbw(IMPSTLOG.AUCMB ~ factor(AGE) + factor(COUNTRY), data=bdataPIcorrectRatio, bws=gbw, bandwidth.compute=FALSE)
-    ghat <- npcdens(bgbw)
+    # kernel density estimator for g(s0|X=x) using the placebo group in the phase 2 subset
+    if (anyBaselineCovar){
+      bgbw <- npcdensbw(fm.gbw, data=bdataP2correctRatio, bws=gbw, bandwidth.compute=FALSE)
+      ghat <- npcdens(bgbw)
+    } else {
+      bgbw <- npudensbw(fm.gbw, data=bdataP2correctRatio, bws=gbw, bandwidth.compute=FALSE)
+      ghat <- npudens(bgbw)
+    }
 
-    # a single bootstrap VE(s) curve, risk1(s) curve, and risk0(s) curve
-    curves <- lapply(markerVals, function(s){ risk(s, data, dataI, fit1, fhat, ghat, markerName, cpoint) })
+    # the first argument of 'risk' is a scalar
+    if (anyBaselineCovar){
+      fm <- as.formula(paste0("~",paste(formulaDecomp[[2]][-1],collapse="+")))
+    } else {
+      fm <- ~ 1
+    }
+    curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, bdata, bdata2, fit1, fhat, ghat, cpoint) })
     plaRiskCurve <- sapply(curves, "[[", "plaRisk")
     txRiskCurve <- sapply(curves, "[[", "txRisk")
 
-    return(list(plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve))
+    # the output list
+    out <- list(plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve)
+    if (hinge){
+      out$cpointP <- cpointP
+      out$cpointT <- cpointT
+    }
+
+    return(out)
   })
 
   # cbind all bootstrap risk curves
   plaRiskCurveBootEst <- drop(do.call(cbind, lapply(bRiskCurveList,"[[","plaRiskCurve")))
   txRiskCurveBootEst <- drop(do.call(cbind, lapply(bRiskCurveList,"[[","txRiskCurve")))
-  # bList <- list(markerVals=markerVals, plaRiskCurveBootEst=plaRiskCurveBootEst, txRiskCurveBootEst=txRiskCurveBootEst, bIdxControls=bSampleControls, bIdxCases=bSampleCases,
-  #               cpointP=cpointP, cpointV=cpointV, fOptBandwidths=fbw, gOptBandwidths=gbw, seed=seed)
-  bList <- list(markerVals=markerVals, plaRiskCurveBootEst=plaRiskCurveBootEst, txRiskCurveBootEst=txRiskCurveBootEst)
+
+  # the output list
+  bList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurveBootEst=plaRiskCurveBootEst, txRiskCurveBootEst=txRiskCurveBootEst)
+  if (hinge){
+    bList$cpointPbootEst <- sapply(bRiskCurveList,"[[","cpointP")
+    bList$cpointTbootEst <- sapply(bRiskCurveList,"[[","cpointT")
+  }
 
   if (!is.null(saveFile)){
     save(bList, file=file.path(saveDir, saveFile))
-    cat("Output saved in:\n", file.path(saveDir, saveFile), "\n\n")
+    cat("Output saved in:\n",file.path(saveDir, saveFile),"\n")
   }
 
   return(invisible(bList))
@@ -462,7 +518,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
 
   # a grid of values of S on which the estimated risk curves are returned
   if (is.null(biomarkerGrid)){
-    biomarkerGrid <- seq(min(data2$S), max(data2$S), length.out==200)
+    biomarkerGrid <- seq(min(data2$S), max(data2$S), length.out=200)
   }
 
   # the first argument of 'risk' is a scalar
