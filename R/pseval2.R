@@ -12,10 +12,13 @@ NULL
 NULL
 #' @import chngpt
 NULL
+#' @import MASS
+NULL
 
 library(osDesign)
 library(np)
 library(chngpt)
+library(MASS)
 
 logit <- function(p){
   return(log(p/(1-p)))
@@ -45,7 +48,7 @@ hNum <- function(s0, s1, lev, vars, data, tpsFit, changePoint=NULL, npcdensFit1,
     lev1names <- names(which(lev==1))
     predictLevels <- NULL
     for (vi in 1:length(vars)){
-      varLevels <- levels(data[,vars[vi]])
+      varLevels <- levels(as.factor(data[,vars[vi]]))
       predictLevelVar <- NULL
       for (li in 2:length(varLevels)){
         if (any(grepl(vars[vi], lev1names) & grepl(varLevels[li], lev1names))){
@@ -79,7 +82,7 @@ hDen <- function(s0, s1, lev, vars, data, npcdensFit1, npcdensFit2){
     lev1names <- names(which(lev==1))
     predictLevels <- NULL
     for (vi in 1:length(vars)){
-      varLevels <- levels(data[,vars[vi]])
+      varLevels <- levels(as.factor(data[,vars[vi]]))
       predictLevelVar <- NULL
       for (li in 2:length(varLevels)){
         if (any(grepl(vars[vi], lev1names) & grepl(varLevels[li], lev1names))){
@@ -251,7 +254,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
   }
   rm(data2)
 
-  bRiskCurveList <- lapply(1:iter, function(i){
+  bRiskCurveList <- lapply(1:iter, function(i, formulaDecomp){
     # create a bootstrap sample
     bdata <- rbind(dataControls[bSampleControls[,i],], dataCases[bSampleCases[,i],])
     # extract the bootstrap subset with phase 2 data
@@ -318,26 +321,32 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
     nTCases <- NROW(subset(bdataCases, Z==1))
 
     # in each study group separately, recalculate the required number of cases in 'bdata2' to match the case:control ratio in 'bdata'
-    nPCasesInew <- nPCases * nPControls2 / nPControls
-    nVCasesInew <- nVCases * nVControls2 / nVControls
+    nPCases2new <- nPCases * nPControls2 / nPControls
+    nTCases2new <- nTCases * nTControls2 / nTControls
 
     # in each study group separately, randomly sample cases to match the case:control ratio in 'bdata'
     bdataP2correctRatio <- rbind(bdataPControls2, bdataPCases2[sample(1:nPCases2, max(1,round(nPCases2new,0))),])
     bdataT2correctRatio <- rbind(bdataTControls2, bdataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
     rm(bdataPControls2); rm(bdataPCases2); rm(bdataTControls2); rm(bdataTCases2)
 
-    # kernel density estimator for f(s1|Sb=s0, X=x) using the treatment group in the phase 2 subset
-    bfbw <- npcdensbw(fm.fbw, data=bdataT2correctRatio, bws=fbw, bandwidth.compute=FALSE)
-    fhat <- npcdens(bfbw)
-
     # kernel density estimator for g(s0|X=x) using the placebo group in the phase 2 subset
     if (anyBaselineCovar){
+      # the formulas are reintroduced in the 'lapply' so that 'npcdensbw' and 'npudensbw' are able to evaluate them in the parent.frame() environment
+      fm.fbw <- as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+")))
+      fm.gbw <- as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
       bgbw <- npcdensbw(fm.gbw, data=bdataP2correctRatio, bws=gbw, bandwidth.compute=FALSE)
       ghat <- npcdens(bgbw)
     } else {
+      fm.fbw <- S ~ Sb
+      fm.gbw <- ~ S
+      # marginal density
       bgbw <- npudensbw(fm.gbw, data=bdataP2correctRatio, bws=gbw, bandwidth.compute=FALSE)
       ghat <- npudens(bgbw)
     }
+
+    # kernel density estimator for f(s1|Sb=s0, X=x) using the treatment group in the phase 2 subset
+    bfbw <- npcdensbw(fm.fbw, data=bdataT2correctRatio, bws=fbw, bandwidth.compute=FALSE)
+    fhat <- npcdens(bfbw)
 
     # the first argument of 'risk' is a scalar
     if (anyBaselineCovar){
@@ -357,7 +366,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
     }
 
     return(out)
-  })
+  }, formulaDecomp=formulaDecomp)
 
   # cbind all bootstrap risk curves
   plaRiskCurveBootEst <- drop(do.call(cbind, lapply(bRiskCurveList,"[[","plaRiskCurve")))
@@ -378,14 +387,76 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
   return(invisible(bList))
 }
 
-# 'riskCurve' returns the estimated P(Y(0)=1|S(1)=s1) and P(Y(1)=1|S(1)=s1) on a grid of s1 values
-# 'data' is assumed to be the ITT set at-risk at month 13 with no prior infection (the target population)
-#' @param formula a two-sided formula for the GLM; the LHS is the binary clinical endpoint; the first variable listed on the RHS is the biomarker response at t0 and any variables that follow are baseline covariates
-#' @param bsm a character string specifying the variable name representing the baseline surrogate measure
-#' @param tx a character string specifying the variable name representing the treatment group indicator
-#' @param hinge shall a hinge model be used?
-#' @param weights either a numeric vector of weights with values corresponding to rows in \code{data} or a character string specifying the variable name in \code{data}. The weights are passed on to GLMs.
-#' @param biomarkerGrid a numeric vector of biomarker values at which the risk curves are evaluated and returned
+#' Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Three-Phase Sampling Design
+#'
+#' Estimates \eqn{P\{Y(z)=1|S(1)=s_1\}}, \eqn{z=0,1}, on a grid of \eqn{s_1} values following the estimation method of Juraska, Huang, and Gilbert (2018), where \eqn{Z} is the
+#' treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a discrete or continuous univariate biomarker under assignment to \eqn{Z=z}
+#' measured at fixed time \eqn{t_0} after randomization, and \eqn{Y} is a binary clinical endpoint (\eqn{Y=1}, disease; \eqn{Y=0}, no disease) measured after \eqn{t_0}. The
+#' estimator employs the generalized product kernel density estimation method of Hall, Racine, and Li (2004). The risks \eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where
+#' \eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression models.
+#'
+#' @param formula a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
+#' at \eqn{t0} and all variables that follow, if any, are discrete baseline covariates specified in all fitted models that condition on them. Interactions and transformations
+#' of the baseline covariates are allowed. All terms in the formula must be evaluable in the data frame \code{data}.
+#' @param bsm a character string specifying the variable name in \code{data} representing the baseline surrogate measure
+#' @param tx a character string specifying the variable name in \code{data} representing the treatment group indicator
+#' @param data a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
+#' \code{tx}. Biomarker values at baseline and \eqn{t_0} that are unavailable are represented as \code{NA}.
+#' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
+#' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk.
+#' @param weights either a numeric vector of weights or a character string specifying the variable name in \code{data} representing weights applied to observations
+#' in the phase 2 subset in order to make inference about the target population of all randomized participants endpoint-free at \eqn{t_0}. They reflect that
+#' the case:control ratio in the phase 2 subset is different from that in the target population. The weights are passed on to GLMs in the estimation of the hinge point.
+#' If \code{NULL} (default), a common weight is calculated separately for all cases and controls, pooling over treatment assignments, in the phase 2 subset.
+#' @param biomarkerGrid a numeric vector of \eqn{S(1)} values at which the conditional endpoint risk in each study group is estimated. If \code{NULL} (default), a grid of
+#' values spanning the range of observed values of the biomarker will be used.
+#' @param saveFile a character string specifying the name of an \code{.RData} file storing the output list. If \code{NULL} (default), the output list will only be returned.
+#' @param saveDir a character string specifying a path for the output directory. If \code{NULL} (default), the output list will only be returned; otherwise, if
+#' \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.
+#'
+#' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
+#' The output object is a list with the following components:
+#' \itemize{
+#' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional endpoint risk is estimated in the components \code{plaRiskCurve} and
+#' \code{txRiskCurve}
+#' \item \code{plaRiskCurve}: estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
+#' \item \code{txRiskCurve}: estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
+#' \item \code{fOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} containing the optimal bandwidths, selected by likelihood
+#' cross-validation, in the kernel estimation of the conditional density of \eqn{S(1)} given the baseline surrogate measure and any other specified baseline covariates
+#' \item \code{gOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} or \code{npudensbw} containing the optimal bandwidths,
+#' selected by likelihood cross-validation, in the kernel estimation of the conditional density of \eqn{S(0)} given any specified baseline covariates or the marginal density
+#' of \eqn{S(0)} if no baseline covariates are specified in \code{formula}
+#' \item \code{cpointP}: if \code{hinge=TRUE}, the estimate of the hinge point in the placebo group
+#' \item \code{cpointT}: if \code{hinge=TRUE}, the estimate of the hinge point in the treatment group
+#' }
+#'
+#' @examples
+#' n <- 500
+#' Z <- rep(0:1, each=n/2)
+#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
+#' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
+#' X <- rbinom(n,1,0.5)
+#' # delete S(1) in placebo recipients
+#' S[Z==0,3] <- NA
+#' # delete S(0) in treatment recipients
+#' S[Z==1,2] <- NA
+#' # generate the indicator of being sampled into the phase 2 subset
+#' phase2 <- rbinom(n,1,0.5)
+#' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
+#' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
+#' # delete Sb in cases not included in the phase 2 subset
+#' S[Y==1 & phase2==0,1] <- NA
+#' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
+#' colnames(data) <- c("X","Z","Sb","S","Y")
+#' grid <- with(data, seq(min(S, na.rm=TRUE), max(S, na.rm=TRUE), length.out=5))
+#'
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' # alternatively, to save the .RData output file (no '<-' needed):
+#' riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData", saveDir="./")
+#'
+#' @seealso \code{\link{bootRiskCurve}}
+#' @export
 riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
@@ -538,7 +609,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
     oList$cpointT <- cpointT
   }
 
-  if (!is.null(saveFile)){
+  if (!is.null(saveFile) & !is.null(saveDir)){
     save(oList, file=file.path(saveDir, saveFile))
     cat("Output saved in:\n",file.path(saveDir, saveFile),"\n")
   }
