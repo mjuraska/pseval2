@@ -162,15 +162,78 @@ risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, cha
   return(list(plaRisk=risk0, txRisk=risk1))
 }
 
-# 'bRiskCurve' returns a list; one list component is a matrix (or vector in case iter=1) with rows
-# being the estimated VE(s1) curves based on bootstrap samples
-# 'data' is assumed to be the ITT set at-risk at month 13 with no prior infection
-# 'markerName' is one of "AUC", "S1", "S2", "S3", "S4"
-# 'iter' is the number of bootstrap iterations
-# 'saveFile' is the name of the .RData file where the output list will be stored
-# 'saveDir' specifies the output directory
-# 'seed' is an integer for set.seed()
-bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, saveFile=NULL, saveDir=NULL, seed=NULL){
+#' Bootstrap Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure
+#' Three-Phase Sampling Design
+#'
+#' Estimates \eqn{P\{Y(z)=1|S(1)=s_1\}}, \eqn{z=0,1}, on a grid of \eqn{s_1} values in bootstrap resamples (see \code{\link{riskCurve}} for notation introduction). Cases
+#' (\eqn{Y=1}) and controls (\eqn{Y=0}) are sampled separately yielding a fixed number of cases and controls in each bootstrap sample. Consequentially, the number of controls
+#' with available phase 2 data varies across bootstrap samples.
+#'
+#' @param formula a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
+#' at \eqn{t0} and all variables that follow, if any, are discrete baseline covariates specified in all fitted models that condition on them. Interactions and transformations
+#' of the baseline covariates are allowed. All terms in the formula must be evaluable in the data frame \code{data}.
+#' @param bsm a character string specifying the variable name in \code{data} representing the baseline surrogate measure
+#' @param tx a character string specifying the variable name in \code{data} representing the treatment group indicator
+#' @param data a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
+#' \code{tx}. Values of \code{bsm} and the biomarker at \eqn{t_0} that are unavailable are represented as \code{NA}.
+#' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
+#' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk. The hinge point
+#' is reestimated in each bootstrap sample.
+#' @param weights either a numeric vector of weights or a character string specifying the variable name in \code{data} representing weights applied to observations
+#' in the phase 2 subset in order to make inference about the target population of all randomized participants endpoint-free at \eqn{t_0}. The weights reflect that
+#' the case:control ratio in the phase 2 subset is different from that in the target population and are passed on to GLMs in the estimation of the hinge point.
+#' If \code{NULL} (default and recommended), weights for cases and controls are recalculated separately in each study group \emph{within each bootstrap sample}; otherwise the
+#' same specified vector of weights is used in each bootstrap sample.
+#' @param biomarkerGrid a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
+#' a grid of values spanning the range of observed values of the biomarker will be used.
+#' @param iter the number of bootstrap iterations
+#' @param seed a seed of the random number generator supplied to \code{set.seed} for reproducibility
+#' @param saveFile a character string specifying the name of an \code{.RData} file storing the output list. If \code{NULL} (default), the output list will only be returned.
+#' @param saveDir a character string specifying a path for the output directory. If \code{NULL} (default), the output list will only be returned; otherwise, if
+#' \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.
+#'
+#' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
+#' The output object is a list with the following components:
+#' \itemize{
+#' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
+#' \code{txRiskCurveBoot}
+#' \item \code{plaRiskCurveBoot}: a \code{length(biomarkerGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid},
+#' with columns representing bootstrap samples
+#' \item \code{txRiskCurveBoot}: a \code{length(biomarkerGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid},
+#' with columns representing bootstrap samples
+#' \item \code{cpointPboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the placebo group in each bootstrap sample
+#' \item \code{cpointTboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the treatment group in each bootstrap sample
+#' }
+#'
+#' @examples
+#' n <- 500
+#' Z <- rep(0:1, each=n/2)
+#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
+#' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
+#' X <- rbinom(n,1,0.5)
+#' # delete S(1) in placebo recipients
+#' S[Z==0,3] <- NA
+#' # delete S(0) in treatment recipients
+#' S[Z==1,2] <- NA
+#' # generate the indicator of being sampled into the phase 2 subset
+#' phase2 <- rbinom(n,1,0.4)
+#' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
+#' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
+#' # delete Sb in cases not included in the phase 2 subset
+#' S[Y==1 & phase2==0,1] <- NA
+#' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
+#' colnames(data) <- c("X","Z","Sb","S","Y")
+#' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
+#' grid <- seq(qS[1], qS[2], length.out=5)
+#'
+#' out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=1, seed=10)
+#' # alternatively, to save the .RData output file (no '<-' needed):
+#' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+#'
+#' @seealso \code{\link{riskCurve}}
+#' @export
+bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, seed=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
@@ -264,10 +327,11 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
     if (hinge){
       # recalculate weights in each bootstrap iteration for passing on to 'chngptm'
       if (is.null(weights)){
-        nControls2 <- NROW(subset(bdata2, Y==0))
-        nCases2 <- NROW(subset(bdata2, Y==1))
-
-        bdata2$weights <- ifelse(bdata2$Y==1, nCases/nCases2, nControls/nControls2)
+        bdata2$weights <- NA
+        bdata2$weights <- ifelse(bdata2$Z==0 & bdata2$Y==0, nPControls/nPControls2, bdata2$weights)
+        bdata2$weights <- ifelse(bdata2$Z==1 & bdata2$Y==0, nTControls/nTControls2, bdata2$weights)
+        bdata2$weights <- ifelse(bdata2$Z==0 & bdata2$Y==1, nPCases/nPCases2, bdata2$weights)
+        bdata2$weights <- ifelse(bdata2$Z==1 & bdata2$Y==1, nTCases/nTCases2, bdata2$weights)
       }
 
       # in each study group separately, estimate the hinge point for the association of S with Y
@@ -369,14 +433,14 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
   }, formulaDecomp=formulaDecomp)
 
   # cbind all bootstrap risk curves
-  plaRiskCurveBootEst <- drop(do.call(cbind, lapply(bRiskCurveList,"[[","plaRiskCurve")))
-  txRiskCurveBootEst <- drop(do.call(cbind, lapply(bRiskCurveList,"[[","txRiskCurve")))
+  plaRiskCurveBoot <- sapply(bRiskCurveList,"[[","plaRiskCurve")
+  txRiskCurveBoot <- sapply(bRiskCurveList,"[[","txRiskCurve")
 
   # the output list
-  bList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurveBootEst=plaRiskCurveBootEst, txRiskCurveBootEst=txRiskCurveBootEst)
+  bList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurveBoot=plaRiskCurveBoot, txRiskCurveBoot=txRiskCurveBoot)
   if (hinge){
-    bList$cpointPbootEst <- sapply(bRiskCurveList,"[[","cpointP")
-    bList$cpointTbootEst <- sapply(bRiskCurveList,"[[","cpointT")
+    bList$cpointPboot <- sapply(bRiskCurveList,"[[","cpointP")
+    bList$cpointTboot <- sapply(bRiskCurveList,"[[","cpointT")
   }
 
   if (!is.null(saveFile)){
@@ -387,7 +451,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
   return(invisible(bList))
 }
 
-#' Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Three-Phase Sampling Design
+#' Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure Three-Phase Sampling Design
 #'
 #' Estimates \eqn{P\{Y(z)=1|S(1)=s_1\}}, \eqn{z=0,1}, on a grid of \eqn{s_1} values following the estimation method of Juraska, Huang, and Gilbert (2018), where \eqn{Z} is the
 #' treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a discrete or continuous univariate biomarker under assignment to \eqn{Z=z}
@@ -401,15 +465,15 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' @param bsm a character string specifying the variable name in \code{data} representing the baseline surrogate measure
 #' @param tx a character string specifying the variable name in \code{data} representing the treatment group indicator
 #' @param data a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
-#' \code{tx}. Biomarker values at baseline and \eqn{t_0} that are unavailable are represented as \code{NA}.
+#' \code{tx}. Values of \code{bsm} and the biomarker at \eqn{t_0} that are unavailable are represented as \code{NA}.
 #' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 #' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk.
 #' @param weights either a numeric vector of weights or a character string specifying the variable name in \code{data} representing weights applied to observations
-#' in the phase 2 subset in order to make inference about the target population of all randomized participants endpoint-free at \eqn{t_0}. They reflect that
-#' the case:control ratio in the phase 2 subset is different from that in the target population. The weights are passed on to GLMs in the estimation of the hinge point.
-#' If \code{NULL} (default), a common weight is calculated separately for all cases and controls, pooling over treatment assignments, in the phase 2 subset.
-#' @param biomarkerGrid a numeric vector of \eqn{S(1)} values at which the conditional endpoint risk in each study group is estimated. If \code{NULL} (default), a grid of
-#' values spanning the range of observed values of the biomarker will be used.
+#' in the phase 2 subset in order to make inference about the target population of all randomized participants endpoint-free at \eqn{t_0}. The weights reflect that
+#' the case:control ratio in the phase 2 subset is different from that in the target population and are passed on to GLMs in the estimation of the hinge point.
+#' If \code{NULL} (default), weights for cases and controls are calculated separately in each study group.
+#' @param biomarkerGrid a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
+#' a grid of values spanning the range of observed values of the biomarker will be used.
 #' @param saveFile a character string specifying the name of an \code{.RData} file storing the output list. If \code{NULL} (default), the output list will only be returned.
 #' @param saveDir a character string specifying a path for the output directory. If \code{NULL} (default), the output list will only be returned; otherwise, if
 #' \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.
@@ -417,10 +481,10 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
 #' The output object is a list with the following components:
 #' \itemize{
-#' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional endpoint risk is estimated in the components \code{plaRiskCurve} and
+#' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
 #' \code{txRiskCurve}
-#' \item \code{plaRiskCurve}: estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
-#' \item \code{txRiskCurve}: estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
+#' \item \code{plaRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
+#' \item \code{txRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
 #' \item \code{fOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} containing the optimal bandwidths, selected by likelihood
 #' cross-validation, in the kernel estimation of the conditional density of \eqn{S(1)} given the baseline surrogate measure and any other specified baseline covariates
 #' \item \code{gOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} or \code{npudensbw} containing the optimal bandwidths,
@@ -442,14 +506,15 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' # delete S(0) in treatment recipients
 #' S[Z==1,2] <- NA
 #' # generate the indicator of being sampled into the phase 2 subset
-#' phase2 <- rbinom(n,1,0.5)
+#' phase2 <- rbinom(n,1,0.4)
 #' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
 #' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
 #' # delete Sb in cases not included in the phase 2 subset
 #' S[Y==1 & phase2==0,1] <- NA
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
-#' grid <- with(data, seq(min(S, na.rm=TRUE), max(S, na.rm=TRUE), length.out=5))
+#' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
+#' grid <- seq(qS[1], qS[2], length.out=5)
 #'
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
 #' # alternatively, to save the .RData output file (no '<-' needed):
@@ -473,6 +538,15 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
 
   formulaDecomp <- strsplit(strsplit(paste(deparse(formula), collapse = ""), " *[~] *")[[1]], " *[+] *")
   anyBaselineCovar <- length(formulaDecomp[[2]])>1
+
+  # convert any baseline covariates into factors
+  if (anyBaselineCovar){
+    # 'vars' is of length >= 3
+    vars <- all.vars(formula)[-(1:2)]
+    for (i in 1:length(vars)){
+      data[,vars[i]] <- as.factor(data[,vars[i]])
+    }
+  }
 
   # standardize the variable name for the treatment group indicator
   colnames(data)[colnames(data)==tx] <- "Z"
@@ -531,13 +605,11 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
   if (hinge){
     # calculate weights for passing on to 'chngptm'
     if (is.null(weights) & !("weights" %in% colnames(data))){
-      nControls <- NROW(dataControls)
-      nControls2 <- nPControls2 + nTControls2
-
-      nCases <- NROW(dataCases)
-      nCases2 <- nPCases2 + nTCases2
-
-      data2$weights <- ifelse(data2$Y==1, nCases/nCases2, nControls/nControls2)
+      data2$weights <- NA
+      data2$weights <- ifelse(data2$Z==0 & data2$Y==0, nPControls/nPControls2, data2$weights)
+      data2$weights <- ifelse(data2$Z==1 & data2$Y==0, nTControls/nTControls2, data2$weights)
+      data2$weights <- ifelse(data2$Z==0 & data2$Y==1, nPCases/nPCases2, data2$weights)
+      data2$weights <- ifelse(data2$Z==1 & data2$Y==1, nTCases/nTCases2, data2$weights)
     }
 
     # in each study group separately, estimate the hinge point for the association of S with Y
