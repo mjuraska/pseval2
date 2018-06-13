@@ -806,6 +806,20 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
   return(out)
 }
 
+#' Testing of the Null Hypotheses of a Flat and a Constant Marginal Causal Effect Predictiveness Curve
+#'
+#' Computes a two-sided p-value either from the test of \{\eqn{H_0^1: mCEP(s_1)=CE} for all \eqn{s_1}\}, where \eqn{CE} is the overall causal treatment effect on the clinical
+#' endpoint, or from the test of \{\eqn{H_0^2: mCEP(s_1)=c} for all \eqn{s_1} and a specified constant \eqn{c}\}, each against a general alternative hypothesis. The testing
+#' procedures are described in Juraska, Huang, and Gilbert (2018).
+#'
+#' @param object an object returned by \code{\link{riskCurve}}
+#' @param boot an object returned by \code{\link{bootRiskCurve}}
+#' @param contrast a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"}
+#' (log relative risk), and \code{"rd"} (risk difference [placebo minus treatment]).
+#' @param null a character string specifying the null hypothesis to be tested; one of \code{"H01"} and \code{"H02"} as introduced above
+#' @param overallPlaRisk a numeric value of the estimated overall clinical endpoint risk in the placebo group. It is required when \code{null} equals \code{"H01"}.
+#' @param overallTxRisk a numeric value of the estimated overall clinical endpoint risk in the treatment group. It is required when \code{null} equals \code{"H01"}.
+#'
 # returns a two-sided p-value from the test of {H01: mCEP(s1)=CE for all s1} or from the test of {H02: mCEP(s1)=a known 'nullConstant' for s1 in S}
 # 'plaRiskCurvePointEst' and 'txRiskCurvePointEst' are numeric vectors
 # 'plaRiskCurveBootEst' and 'txRiskCurveBootEst' are length(markerVals) x nBoot matrices
@@ -858,7 +872,7 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 
   if (null=="H02"){
     tMCEPconstantH02 <- switch(contrast, te=log(1-MCEPconstantH02), rr=log(MCEPconstantH02), logrr=MCEPconstantH02, rd=MCEPconstantH02)
-    testStat <- max(abs(tMCEP-tMCEPconstantNull)/bSE, na.rm=TRUE)
+    testStat <- max(abs(tMCEP-tMCEPconstantH02)/bSE, na.rm=TRUE)
     return(mean(supAbsZ > testStat))
   }
 }
