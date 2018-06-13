@@ -479,7 +479,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.
 #'
 #' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
-#' The output object is a list with the following components:
+#' The output object (of class \code{"riskCurve"}) is a list with the following components:
 #' \itemize{
 #' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
 #' \code{txRiskCurve}
@@ -680,6 +680,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
     oList$cpointP <- cpointP
     oList$cpointT <- cpointT
   }
+  class(oList) <- "riskCurve"
 
   if (!is.null(saveFile) & !is.null(saveDir)){
     save(oList, file=file.path(saveDir, saveFile))
@@ -687,6 +688,122 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
   }
 
   return(invisible(oList))
+}
+
+# 'object' is the output list from either 'riskCurve' or 'bootRiskCurve'
+contrastRiskCurve <- function(object, contrast){
+  if (contrast=="te"){ return(1 - object$txRisk/object$plaRisk) }
+  if (contrast=="rr"){ return(object$txRisk/object$plaRisk) }
+  if (contrast=="logrr"){ return(log(object$txRisk/object$plaRisk)) }
+  if (contrast=="rd"){ return(object$plaRisk - object$txRisk) }
+}
+
+# 'object' is the output list from either 'riskCurve' or 'bootRiskCurve'
+tContrastRiskCurve <- function(object, contrast){
+  if (contrast %in% c("te","rr","logrr")){ return(log(object$txRisk/object$plaRisk)) }
+  if (contrast=="rd"){ return(object$plaRisk - object$txRisk) }
+}
+
+# 'x' is a numeric vector
+invtContrastRiskCurve <- function(x, contrast){
+  if (contrast=="te"){ return(1 - exp(x)) }
+  if (contrast=="rr"){ return(exp(x)) }
+  if (contrast=="logrr"){ return(x) }
+  if (contrast=="rd"){ return(x) }
+}
+
+#' Summary of Point and Interval Estimation of a Marginal Causal Effect Predictiveness Curve
+#'
+#' Summarizes point estimates and pointwise and simultaneous Wald-type bootstrap confidence intervals for a specified marginal causal effect predictiveness (mCEP) curve (see,
+#' e.g., Juraska, Huang, and Gilbert (2018) for the definition).
+#'
+#' @param object an object of class \code{"riskCurve"}, typically returned by \code{\link{riskCurve}}
+#' @param boot an object returned by \code{\link{bootRiskCurve}}. If \code{NULL} (default), only point estimates are reported.
+#' @param contrast a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"} (log relative risk), and \code{"rd"} (risk
+#' difference [placebo minus treatment]).
+#' @param confLevel the confidence level of pointwise and simultaneous confidence intervals
+#' @param \dots for other methods
+#'
+#' @return The output object is a data frame containing point and possibly interval estimates of the specified mCEP curve.
+#'
+#' @examples
+#' n <- 500
+#' Z <- rep(0:1, each=n/2)
+#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
+#' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
+#' X <- rbinom(n,1,0.5)
+#' # delete S(1) in placebo recipients
+#' S[Z==0,3] <- NA
+#' # delete S(0) in treatment recipients
+#' S[Z==1,2] <- NA
+#' # generate the indicator of being sampled into the phase 2 subset
+#' phase2 <- rbinom(n,1,0.4)
+#' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
+#' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
+#' # delete Sb in cases not included in the phase 2 subset
+#' S[Y==1 & phase2==0,1] <- NA
+#' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
+#' colnames(data) <- c("X","Z","Sb","S","Y")
+#' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
+#' grid <- seq(qS[1], qS[2], length.out=5)
+#'
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+#' summary(out, boot, contrast="te")
+#'
+#' @seealso \code{\link{riskCurve}} and \code{\link{bootRiskCurve}}
+#' @export
+summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr", "rd"), confLevel=0.95,...){
+  contrast <- match.arg(contrast)
+
+  # point estimates of mCEP(s1)
+  MCEP <- contrastRiskCurve(object, contrast)
+  out <- data.frame(object$biomarkerGrid, MCEP)
+  colnames(out) <- c("biomarkerGrid", contrast)
+
+  # interval estimates of mCEP(s1)
+  if(!is.null(boot)){
+    # transformed MCEP curve
+    tMCEP <- tContrastRiskCurve(object, contrast)
+    # transformed bootstrapped MCEP curves
+    # assuming the matrices have the same dimensions
+    tbMCEP <- tContrastRiskCurve(boot, contrast)
+
+    # bootstrap SE of tMCEP estimates
+    bSE <- apply(tbMCEP, 1, sd, na.rm=TRUE)
+
+    # pointwise confidence bounds for MCEP(s1)
+    ptLB.MCEP <- invtContrastRiskCurve(tMCEP - qnorm(1-(1-confLevel)/2) * bSE, contrast=contrast)
+    ptUB.MCEP <- invtContrastRiskCurve(tMCEP + qnorm(1-(1-confLevel)/2) * bSE, contrast=contrast)
+
+    supAbsZ <- NULL
+    for (j in 1:NCOL(tbMCEP)){
+      Zstat <- abs((tbMCEP[,j]-tMCEP)/bSE)
+      supAbsZ <- c(supAbsZ, max(Zstat, na.rm=!all(is.na(Zstat))))
+    }
+    qSupAbsZ <- quantile(supAbsZ, probs=confLevel, na.rm=TRUE)
+
+    smLB.MCEP <- invtContrastRiskCurve(tMCEP - qSupAbsZ * bSE, contrast=contrast)
+    smUB.MCEP <- invtContrastRiskCurve(tMCEP + qSupAbsZ * bSE, contrast=contrast)
+
+    if (contrast=="te"){
+      tmp <- ptUB.MCEP
+      ptUB.MCEP <- ptLB.MCEP
+      ptLB.MCEP <- tmp
+
+      tmp <- smUB.MCEP
+      smUB.MCEP <- smLB.MCEP
+      smLB.MCEP <- tmp
+    }
+
+    out$ptLB <- ptLB.MCEP
+    out$ptUB <- ptUB.MCEP
+    out$smLB <- smLB.MCEP
+    out$smUB <- smUB.MCEP
+  }
+
+  return(out)
 }
 
 # returns a two-sided p-value from the test of {H01: mCEP(s1)=CE for all s1} or from the test of {H02: mCEP(s1)=a known 'nullConstant' for s1 in S}
@@ -698,31 +815,30 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
 # 'null' must be one of "H01" and "H02"
 # 'S1' is a numeric vector specifying a grid of marker values on which the risk curve estimates are calculated; it needs to be specified if 'limS' is specified
 # 'limS1' is a numeric vector specifying the minimum and maximum S(1) value in H02 and must be specified if null=="H02"
-testConstancy2 <- function(plaRiskCurvePointEst, txRiskCurvePointEst, plaRiskCurveBootEst, txRiskCurveBootEst, plaRiskOverall=NULL, txRiskOverall=NULL, tMCEPconstantNull=NULL,
-                           MCEPcontrast, null, S1=NULL, limS1=NULL){
-  # trim the risk curves if 'limS' is specified
-  if (!is.null(limS1)){
-    if (is.null(S1)){ stop("'S1' and 'limS1' must be specified concurrently.") }
+testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), null=c("H01", "H02"), overallPlaRisk=NULL, overallTxRisk=NULL, MCEPconstantH02=NULL, limS1=NULL){
+  contrast <- match.arg(contrast)
+  null <- match.arg(null)
 
-    plaRiskCurvePointEst <- plaRiskCurvePointEst[S1>=limS1[1] & S1<=limS1[2]]
-    txRiskCurvePointEst <- txRiskCurvePointEst[S1>=limS1[1] & S1<=limS1[2]]
-    plaRiskCurveBootEst <- plaRiskCurveBootEst[S1>=limS1[1] & S1<=limS1[2],]
-    txRiskCurveBootEst <- txRiskCurveBootEst[S1>=limS1[1] & S1<=limS1[2],]
+  if (null=="H01"){
+    if (is.null(overallPlaRisk) | is.null(overallTxRisk)){ stop("'overallPlaRisk' and 'overallTxRisk' must be specified for the test of H01.") }
   }
 
-  if (MCEPcontrast=="multiplicativeTE"){
-    # transformed estimated MCEP curve
-    tMCEP <- log(txRiskCurvePointEst/plaRiskCurvePointEst)
-    # transformed bootstrapped MCEP curves
-    tbMCEP <- log(txRiskCurveBootEst/plaRiskCurveBootEst)
+  if (null=="H02"){
+    if (is.null(MCEPconstantH02)){ stop("'MCEPconstantH02' must be specified for the test of H02.") }
+
+    # trim the risk curves if 'limS1' is specified
+    if (!is.null(limS1)){
+      object$plaRiskCurve <- object$plaRiskCurve[object$biomarkerGrid>=limS1[1] & object$biomarkerGrid<=limS1[2]]
+      object$txRiskCurve <- object$txRiskCurve[object$biomarkerGrid>=limS1[1] & object$biomarkerGrid<=limS1[2]]
+      boot$plaRiskCurveBoot <- boot$plaRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],]
+      boot$txRiskCurveBoot <- boot$txRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],]
+    }
   }
 
-  if (MCEPcontrast=="additiveTE"){
-    # transformed MCEP curve
-    tMCEP <- logit(((plaRiskCurvePointEst - txRiskCurvePointEst) + 1)/2)
-    # transformed bootstrapped MCEP curves
-    tbMCEP <- logit(((plaRiskCurveBootEst - txRiskCurveBootEst) + 1)/2)
-  }
+  # transformed estimated MCEP curve
+  tMCEP <- tContrastRiskCurve(object, contrast)
+  # transformed bootstrapped MCEP curves
+  tbMCEP <- tContrastRiskCurve(boot, contrast)
 
   # bootstrap SE of tMCEP estimates
   bSE <- apply(tbMCEP, 1, sd, na.rm=TRUE)
@@ -735,286 +851,87 @@ testConstancy2 <- function(plaRiskCurvePointEst, txRiskCurvePointEst, plaRiskCur
   }
 
   if (null=="H01"){
-    if (is.null(plaRiskOverall) | is.null(txRiskOverall)){ stop("'plaRiskOverall' and 'txRiskOverall' must be specified for the test of H01.") }
-
-    if (MCEPcontrast=="multiplicativeTE"){
-      tCEest <- log(txRiskOverall/plaRiskOverall)
-    }
-
-    if (MCEPcontrast=="additiveTE"){
-      tCEest <- logit(((plaRiskOverall - txRiskOverall) + 1)/2)
-    }
-
+    tCEest <- ifelse(contrast=="rd", overallPlaRisk - overallTxRisk, log(overallTxRisk/overallPlaRisk))
     testStat <- max(abs(tMCEP-tCEest)/bSE, na.rm=TRUE)
-
     return(mean(supAbsZ > testStat))
   }
 
   if (null=="H02"){
-    if (is.null(tMCEPconstantNull)){ stop("'tMCEPconstantNull' must be specified for the test of H02.") }
-
+    tMCEPconstantH02 <- switch(contrast, te=log(1-MCEPconstantH02), rr=log(MCEPconstantH02), logrr=MCEPconstantH02, rd=MCEPconstantH02)
     testStat <- max(abs(tMCEP-tMCEPconstantNull)/bSE, na.rm=TRUE)
-
     return(mean(supAbsZ > testStat))
   }
 }
 
-plotBvsM13inP <- function(data, markerName){
-  require(robustbase)
-  markerName2 <- switch(markerName, AUC="AUCMB", Min="Min", S1="Sero1", S2="Sero2", S3="Sero3", S4="Sero4")
-  markerName3 <- switch(markerName, AUC="AUC-MB", Min="minimum titer", S1="$\\log_{10}$ serotype 1 titer", S2="$\\log_{10}$ serotype 2 titer", S3="$\\log_{10}$ serotype 3 titer", S4="$\\log_{10}$ serotype 4 titer")
-  markerX <- switch(markerName, AUC="AUC-MB", Min="Minimum Titer", S1="Log10 Serotype 1 Titer", S2="Log10 Serotype 2 Titer", S3="Log10 Serotype 3 Titer", S4="Log10 Serotype 4 Titer")
-  if (markerName!="AUC"){
-    if (markerName=="Min"){  # assumes that there exist variables 'bMin' and 'IMPSTLOG.Min'
-      data$bAUC <- data$bMin
-      data$IMPSTLOG.AUCMB <- data$IMPSTLOG.Min
-    } else {
-      data$ofstatus_m0 <- data[,paste0(tolower(markerName),"fstatus_m0")]
-      data$ofstatus_m13 <- data[,paste0(tolower(markerName),"fstatus_m13")]
-      data$oftime_m13 <- data[,paste0(tolower(markerName),"ftime_m13")]
-      data$bAUC <- data[,paste0("b",markerName)]
-      data$IMPSTLOG.AUCMB <- data[,paste0("IMPSTLOG.Sero",substr(markerName, start=2, stop=2))]
-    }
-  }
-
-  dataI <- subset(data, !is.na(IMPSTLOG.AUCMB))
-  dataP <- subset(dataI, VACC==0 & !is.na(bAUC)) # subset of the placebo group in the imm set with baseline markers
-  par(mar=c(4,5,3,4.2), las=1, cex.axis=0.9, cex.lab=1)
-  with(dataP, plot(bAUC, IMPSTLOG.AUCMB, xlab=paste0("Baseline ",markerX," in Placebo Recipients"),
-                   ylab=paste0("Month 13 ",markerX,ifelse(markerName=="AUC","","\n")," in Placebo Recipients"),
-                   cex=0.7))
-  abline(0,1, lty="dotted", lwd=2)
-  abline(lmrob(IMPSTLOG.AUCMB ~ bAUC, data=dataP, maxit.scale=500), lwd=2.5, col="darkgoldenrod2")
-  with(dataP, lines(lowess(bAUC, IMPSTLOG.AUCMB), col="red", lwd=2, lty="dashed"))
-  legend("topleft", lwd=2, lty=c("solid","dashed","dotted"), col=c("darkgoldenrod2", "red", "black"),
-         legend=c("Robust linear reg (Yohai, 1987)", "LOWESS", "y=x"), bty="n", cex=0.7)
-  legend("bottomright", legend=paste0("Spearman's r=",with(dataP, round(cor(bAUC, IMPSTLOG.AUCMB, method="spearman"), 3))),
-         cex=0.8, bty="n")
-  #cat("\\caption{Association between $S(0)$ and $S_b$ measurements of ",markerName3," in arm $Z=0$ in the CYD14 trial}\\label{Fig: Sbase vs S0 ",markerName2,"}", sep="")
-}
-
-# 'plaRiskCurvePointEst' and 'txRiskCurvePointEst' are vectors
-# 'plaRiskCurveBootEst' and 'txRiskCurveBootEst' are length(markerVals)-by-1000 matrices
-plotLogRRcurve <- function(markerVals, plaRiskCurvePointEst, txRiskCurvePointEst, plaRiskCurveBootEst=NULL, txRiskCurveBootEst=NULL, title=NULL,
-                           hingePoint=NULL, plotLegend=TRUE, yLim=NULL){
-  MCEPcurvePointEst <- log(txRiskCurvePointEst/plaRiskCurvePointEst)
-
-  if (!is.null(plaRiskCurveBootEst) && !is.null(txRiskCurveBootEst)){
-    # transformed MCEP curve (identity)
-    tMCEP <- MCEPcurvePointEst
-    # transformed bootstrapped MCEP curves (identity)
-    # assuming the matrices have the same dimensions
-    tbMCEP <- log(txRiskCurveBootEst/plaRiskCurveBootEst)
-
-    # bootstrap SE of tMCEP estimates
-    bSE <- apply(tbMCEP, 1, sd, na.rm=TRUE)
-
-    # pointwise confidence bounds for MCEP(s1)
-    ptLB.MCEP <- tMCEP - qnorm(0.975) * bSE
-    ptUB.MCEP <- tMCEP + qnorm(0.975) * bSE
-
-    supAbsZ <- NULL
-    for (j in 1:NCOL(tbMCEP)){
-      Zstat <- abs((tbMCEP[,j]-tMCEP)/bSE)
-      supAbsZ <- c(supAbsZ, max(Zstat, na.rm=!all(is.na(Zstat))))
-    }
-    qSupAbsZ <- quantile(supAbsZ, probs=0.95, na.rm=TRUE)
-
-    smLB.MCEP <- tMCEP - qSupAbsZ * bSE
-    smUB.MCEP <- tMCEP + qSupAbsZ * bSE
-  } else {
-    ptLB.MCEP <- ptUB.MCEP <- smLB.MCEP <- smUB.MCEP <- NULL
-  }
-
-  cexTitle <- 1.7
-  cexLab <- 1.4
-  cexAxis <- 1.3
-  cexLegend <- 1.2
-  if (is.null(yLim)){ yLim <- range(c(MCEPcurvePointEst, ptLB.MCEP, ptUB.MCEP, smLB.MCEP, smUB.MCEP), na.rm=TRUE) }
-
-  par(mar=c(5,5,1.5,5), cex.lab=cexLab, cex.axis=cexAxis, las=1)
-
-  plot(markerVals, MCEPcurvePointEst, type="n", xlab="Month 13 Average Titer of Vaccinees", ylab="", xlim=range(markerVals),
-       ylim=yLim, lwd=3.5, xaxt="n", yaxt="n")
-  axis(side=1, at=c(log10(5),1:5), labels=expression("<10   ",10,100,10^3,10^4,10^5))
-  #axis(side=2, at=seq(-5,0,by=0.5), cex.axis=cexAxis)
-  axis(side=2, at=seq(-15,3,by=1), cex.axis=cexAxis)
-  mtext("Log Relative Risk", side=2, las=0, line=3.4, cex=cexLab)
-  #axis(side=4, at=log(1-c(0,0.3,0.5,0.7,0.8,0.9,0.95,0.97,0.99)), labels=c(0,0.3,0.5,0.7,0.8,0.9,0.95,0.97,0.99)*100, cex.axis=cexAxis)
-  axis(side=4, at=log(1-c(-1,0,0.5,0.8,0.9,0.95,0.99)), labels=c(-1,0,0.5,0.8,0.9,0.95,0.99)*100, cex.axis=cexAxis)
-  mtext("Vaccine Efficacy (%)", side=4, las=0, line=3.2, cex=cexLab)
-  if (!is.null(title)){ mtext(title, side=3, cex=cexTitle, line=0) }
-
-  abline(h=0, lty="dotted", lwd=2, col="gray50")
-
-  lines(markerVals, MCEPcurvePointEst, lwd=3.5)
-
-  if (!is.null(plaRiskCurveBootEst) && !is.null(txRiskCurveBootEst)){
-    lines(markerVals, ptLB.MCEP, lty="dashed", lwd=3)
-    lines(markerVals, ptUB.MCEP, lty="dashed", lwd=3)
-    lines(markerVals, smLB.MCEP, lty="dotdash", lwd=3)
-    lines(markerVals, smUB.MCEP, lty="dotdash", lwd=3)
-  }
-
-  if (plotLegend){ legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c("Pointwise 95% CI","Simultaneous 95% CI"), cex=cexLegend, bty="n") }
-  if (!is.null(hingePoint)){ legend("topright", paste0("Hinge Point = ", hingePoint,"  "), cex=cexLegend, bty="n") }
-
-  text(3, -0.7, expression(H[0]^1: p < 0.001), cex=cexLegend, pos=4)
-  text((log10(5)+log10(57))/2, -2, expression(H[0]^2: p < 0.001), cex=cexLegend)
-  segments(x0=log10(5), x1=log10(57), y0=-1.4, lwd=2)
-  segments(x0=log10(5), y0=-1, y1=-1.4, lwd=2)
-  segments(x0=log10(57), y0=-1, y1=-1.4, lwd=2)
-}
-
-# 'plaRiskCurvePointEst' and 'txRiskCurvePointEst' are vectors
-# 'plaRiskCurveBootEst' and 'txRiskCurveBootEst' are length(markerVals)-by-1000 matrices
-plotRiskDiffCurve <- function(markerVals, plaRiskCurvePointEst, txRiskCurvePointEst, plaRiskCurveBootEst=NULL, txRiskCurveBootEst=NULL, title=NULL,
-                              hingePoint=NULL, plotLegend=TRUE, yLim=NULL){
-  MCEPcurvePointEst <- plaRiskCurvePointEst - txRiskCurvePointEst
-
-  if (!is.null(plaRiskCurveBootEst) && !is.null(txRiskCurveBootEst)){
-    # transformed MCEP curve
-    tMCEP <- logit((MCEPcurvePointEst + 1)/2)
-    # transformed bootstrapped MCEP curves
-    # assuming the matrices have the same dimensions
-    tbMCEP <- logit((plaRiskCurveBootEst - txRiskCurveBootEst + 1)/2)
-
-    # bootstrap SE of tMCEP estimates
-    bSE <- apply(tbMCEP, 1, sd, na.rm=TRUE)
-
-    # pointwise confidence bounds for MCEP(s1)
-    ptLB.MCEP <- 2*expit(tMCEP - qnorm(0.975) * bSE) - 1
-    ptUB.MCEP <- 2*expit(tMCEP + qnorm(0.975) * bSE) - 1
-
-    supAbsZ <- NULL
-    for (j in 1:NCOL(tbMCEP)){
-      Zstat <- abs((tbMCEP[,j]-tMCEP)/bSE)
-      supAbsZ <- c(supAbsZ, max(Zstat, na.rm=!all(is.na(Zstat))))
-    }
-    qSupAbsZ <- quantile(supAbsZ, probs=0.95, na.rm=TRUE)
-
-    smLB.MCEP <- 2*expit(tMCEP - qSupAbsZ * bSE) - 1
-    smUB.MCEP <- 2*expit(tMCEP + qSupAbsZ * bSE) - 1
-  } else {
-    ptLB.MCEP <- ptUB.MCEP <- smLB.MCEP <- smUB.MCEP <- NULL
-  }
-
-  cexTitle <- 1.7
-  cexLab <- 1.4
-  cexAxis <- 1.3
-  cexLegend <- 1.2
-  if (is.null(yLim)){ yLim <- range(c(MCEPcurvePointEst, ptLB.MCEP, ptUB.MCEP, smLB.MCEP, smUB.MCEP), na.rm=TRUE) }
-
-  par(mar=c(5,5,1.5,5), cex.lab=cexLab, cex.axis=cexAxis, las=1)
-
-  plot(markerVals, MCEPcurvePointEst, type="n", xlab="Month 13 Average Titer of Vaccinees", ylab="", xlim=range(markerVals),
-       ylim=yLim, lwd=3.5, xaxt="n", yaxt="n")
-  axis(side=1, at=c(log10(5),1:5), labels=expression("<10   ",10,100,10^3,10^4,10^5))
-  # axis(side=2, at=seq(0,0.05,by=0.005), labels=FALSE, cex.axis=cexAxis)
-  # axis(side=2, at=seq(0,0.05,by=0.005), cex.axis=cexAxis, line=-0.3, tick=FALSE)
-  axis(side=2, at=seq(-0.25,0.3,by=0.05), labels=FALSE, cex.axis=cexAxis)
-  axis(side=2, at=seq(-0.25,0.3,by=0.05), cex.axis=cexAxis, line=-0.3, tick=FALSE)
-  mtext("Risk Difference (Placebo - Vaccine)", side=2, las=0, line=3.8, cex=cexLab)
-  if (!is.null(title)){ mtext(title, side=3, cex=cexTitle, line=0) }
-
-  abline(h=0, lty="dotted", lwd=2, col="gray50")
-
-  lines(markerVals, MCEPcurvePointEst, lwd=3.5)
-
-  if (!is.null(plaRiskCurveBootEst) && !is.null(txRiskCurveBootEst)){
-    lines(markerVals, ptLB.MCEP, lty="dashed", lwd=3)
-    lines(markerVals, ptUB.MCEP, lty="dashed", lwd=3)
-    lines(markerVals, smLB.MCEP, lty="dotdash", lwd=3)
-    lines(markerVals, smUB.MCEP, lty="dotdash", lwd=3)
-  }
-
-  if (plotLegend){ legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c("Pointwise 95% CI","Simultaneous 95% CI"), cex=cexLegend, bty="n") }
-  if (!is.null(hingePoint)){ legend("topright", paste0("Hinge Point = ", hingePoint,"  "), cex=cexLegend, bty="n") }
-
-  text(2.5, 0.15, expression(H[0]^1: p == 0.16), cex=cexLegend, pos=4)
-  text((log10(5)+log10(57))/2, 0.1, expression(H[0]^2: p < 0.001), cex=cexLegend)
-  segments(x0=log10(5), x1=log10(57), y0=0.07, lwd=2)
-  segments(x0=log10(5), y0=0.05, y1=0.07, lwd=2)
-  segments(x0=log10(57), y0=0.05, y1=0.07, lwd=2)
-}
-
-plotLogRRcurvePSN <- function(markerVals, MCEPcurvePointEst, ptLB.MCEP, ptUB.MCEP, smLB.MCEP, smUB.MCEP, title=NULL, hingePoint=NULL, plotLegend=TRUE){
+#' Plotting of the Estimated Marginal Causal Effect Predictiveness Curve
+#'
+#' Plots point estimates and, if available, pointwise and simultaneous Wald-type bootstrap confidence intervals for the specified marginal causal effect predictiveness (mCEP)
+#' curve.
+#'
+#' @param object an object returned by \code{\link{summary.riskCurve}}
+#' @param confLevel the confidence level (0.95 by default) of pointwise and simultaneous confidence intervals
+#' @param hingePoint the hinge point estimate (\code{NULL} by default)
+#' @param xLab a character string specifying the x-axis label (\code{NULL} by default)
+#'
+#' @return None. The function is called solely for plot generation.
+#'
+#' @examples
+#' n <- 500
+#' Z <- rep(0:1, each=n/2)
+#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
+#' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
+#' X <- rbinom(n,1,0.5)
+#' # delete S(1) in placebo recipients
+#' S[Z==0,3] <- NA
+#' # delete S(0) in treatment recipients
+#' S[Z==1,2] <- NA
+#' # generate the indicator of being sampled into the phase 2 subset
+#' phase2 <- rbinom(n,1,0.4)
+#' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
+#' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
+#' # delete Sb in cases not included in the phase 2 subset
+#' S[Y==1 & phase2==0,1] <- NA
+#' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
+#' colnames(data) <- c("X","Z","Sb","S","Y")
+#' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
+#' grid <- seq(qS[1], qS[2], length.out=5)
+#'
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+#' sout <- summary(out, boot, contrast="te")
+#' plotMCEPcurve(sout)
+#'
+#' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{summary.riskCurve}}
+#' @export
+plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, xLab=NULL){
   cexTitle <- 1.7
   cexLab <- 1.4
   cexAxis <- 1.3
   cexLegend <- 1.2
 
-  par(mar=c(5,5,1.5,5), cex.lab=cexLab, cex.axis=cexAxis, las=1)
+  yLim <- range(object[,-1], na.rm=TRUE)
+  if (is.null(xLab)){ xLab <- expression(paste("Biomarker Response at ",t[0])) }
+  yLab <- switch(colnames(object)[2], te="Treatment Efficacy", rr="Relative Risk", logrr="Log Relative Risk", rd="Risk Difference (Pla - Tx)")
 
-  plot(markerVals, MCEPcurvePointEst, type="n", xlab="Month 13 Average Titer of Vaccinees", ylab="", xlim=range(markerVals),
-       ylim=range(c(MCEPcurvePointEst, ptLB.MCEP, ptUB.MCEP, smLB.MCEP, smUB.MCEP), na.rm=TRUE), lwd=3.5, xaxt="n", yaxt="n")
-  axis(side=1, at=c(log10(5),1:5), labels=expression("<10   ",10,100,10^3,10^4,10^5))
-  axis(side=2, at=seq(-15,3,by=1), cex.axis=cexAxis)
-  mtext("Log Relative Risk", side=2, las=0, line=3.4, cex=cexLab)
-  axis(side=4, at=log(1-c(-1,0,0.5,0.8,0.9,0.95,0.99)), labels=c(-1,0,0.5,0.8,0.9,0.95,0.99)*100, cex.axis=cexAxis)
-  mtext("Vaccine Efficacy (%)", side=4, las=0, line=3.2, cex=cexLab)
-  if (!is.null(title)){ mtext(title, side=3, cex=cexTitle, line=0) }
+  par(mar=c(5,5,1,1), cex.lab=cexLab, cex.axis=cexAxis, las=1)
 
-  abline(h=0, lty="dotted", lwd=2, col="gray50")
+  plot(object[,1], object[,2], type="n", ylim=c(yLim[1]-0.1*(yLim[2]-yLim[1]), yLim[2]), xlab=xLab, ylab=yLab)
+  abline(h=ifelse(colnames(object)[2]=="rr", 1, 0), lty="dotted", lwd=2, col="gray50")
 
-  lines(markerVals, MCEPcurvePointEst, lwd=3.5)
+  lines(object[,1], object[,2], lwd=3.5)
 
-  lines(markerVals, ptLB.MCEP, lty="dashed", lwd=3)
-  lines(markerVals, ptUB.MCEP, lty="dashed", lwd=3)
-  lines(markerVals, smLB.MCEP, lty="dotdash", lwd=3)
-  lines(markerVals, smUB.MCEP, lty="dotdash", lwd=3)
-
-  if (plotLegend){ legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c("Pointwise 95% CI","Simultaneous 95% CI"), cex=cexLegend, bty="n") }
-  if (!is.null(hingePoint)){ legend("topright", paste0("Hinge Point = ", hingePoint,"  "), cex=cexLegend, bty="n") }
-}
-
-plotRiskDiffCurvePSN <- function(markerVals, MCEPcurvePointEst, ptLB.MCEP, ptUB.MCEP, smLB.MCEP, smUB.MCEP, title=NULL, hingePoint=NULL, plotLegend=TRUE){
-  cexTitle <- 1.7
-  cexLab <- 1.4
-  cexAxis <- 1.3
-  cexLegend <- 1.2
-
-  par(mar=c(5,5,1.5,5), cex.lab=cexLab, cex.axis=cexAxis, las=1)
-
-  plot(markerVals, MCEPcurvePointEst, type="n", xlab="Month 13 Average Titer of Vaccinees", ylab="", xlim=range(markerVals),
-       ylim=range(c(MCEPcurvePointEst, ptLB.MCEP, ptUB.MCEP, smLB.MCEP, smUB.MCEP), na.rm=TRUE), lwd=3.5, xaxt="n", yaxt="n")
-  axis(side=1, at=c(log10(5),1:5), labels=expression("<10   ",10,100,10^3,10^4,10^5))
-  axis(side=2, at=seq(-0.25,0.3,by=0.05), labels=FALSE, cex.axis=cexAxis)
-  axis(side=2, at=seq(-0.25,0.3,by=0.05), cex.axis=cexAxis, line=-0.3, tick=FALSE)
-  mtext("Risk Difference (Placebo - Vaccine)", side=2, las=0, line=3.8, cex=cexLab)
-  if (!is.null(title)){ mtext(title, side=3, cex=cexTitle, line=0) }
-
-  abline(h=0, lty="dotted", lwd=2, col="gray50")
-
-  lines(markerVals, MCEPcurvePointEst, lwd=3.5)
-
-  lines(markerVals, ptLB.MCEP, lty="dashed", lwd=3)
-  lines(markerVals, ptUB.MCEP, lty="dashed", lwd=3)
-  lines(markerVals, smLB.MCEP, lty="dotdash", lwd=3)
-  lines(markerVals, smUB.MCEP, lty="dotdash", lwd=3)
-
-  if (plotLegend){ legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c("Pointwise 95% CI","Simultaneous 95% CI"), cex=cexLegend, bty="n") }
-  if (!is.null(hingePoint)){ legend("topright", paste0("Hinge Point = ", hingePoint,"  "), cex=cexLegend, bty="n") }
-}
-
-# 'applyBoot' calculates the bootstrap confidence bands as pointwise quantiles from the large number of VE curves
-# the purpose of this function is to speed up plotting and report generation and to avoid running out of memory
-# this function creates a new .RData file that can be loaded in a plotting function
-applyBoot <- function(loadFile, saveFile, saveDir){
-  load(file.path(saveDir, loadFile))
-  bVE <- NULL
-  for (i in 1:length(results)){
-    if (!is.null(names(results[[i]]))){
-      bVE <- rbind(bVE, results[[i]]$bVE)
-    }
+  # if interval estimates are available in the data frame
+  if (NCOL(object) > 2){
+    lines(object[,1], object$ptLB, lty="dashed", lwd=3)
+    lines(object[,1], object$ptUB, lty="dashed", lwd=3)
+    lines(object[,1], object$smLB, lty="dotdash", lwd=3)
+    lines(object[,1], object$smUB, lty="dotdash", lwd=3)
   }
-  #bVE <- do.call(rbind, lapply(results, "[[", "bVE"))
 
-  s <- results[[1]]$markerVals
-  UB <- apply(bVE, 2, quantile, probs=0.975, na.rm=TRUE)
-  LB <- apply(bVE, 2, quantile, probs=0.025, na.rm=TRUE)
-  bList <- list(s=s, UB=UB, LB=LB)
-  save(bList, file=file.path(saveDir,saveFile))
+  legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c(paste0("Pointwise ",confLevel*100,"% CI"), paste0("Simultaneous ",confLevel*100,"% CI")),
+         cex=cexLegend, bty="n")
+  if (!is.null(hingePoint)){ legend("bottomright", paste0("Hinge Point = ", round(hingePoint,2),"  "), cex=cexLegend, bty="n") }
 }
 
 npcdensbw.formula <- function (formula, data, subset, na.action, call, ...){
