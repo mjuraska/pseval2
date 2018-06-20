@@ -809,8 +809,8 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' Testing of the Null Hypotheses of a Flat and a Constant Marginal Causal Effect Predictiveness Curve
 #'
 #' Computes a two-sided p-value either from the test of \{\eqn{H_0^1: mCEP(s_1)=CE} for all \eqn{s_1}\}, where \eqn{CE} is the overall causal treatment effect on the clinical
-#' endpoint, or from the test of \{\eqn{H_0^2: mCEP(s_1)=c} for all \eqn{s_1} and a specified constant \eqn{c}\}, each against a general alternative hypothesis. The testing
-#' procedures are described in Juraska, Huang, and Gilbert (2018).
+#' endpoint, or from the test of \{\eqn{H_0^2: mCEP(s_1)=c} for all \eqn{s_1} in the interval \code{limS1} and a specified constant \eqn{c}\}, each against a general alternative
+#' hypothesis. The testing procedures are described in Juraska, Huang, and Gilbert (2018) and are based on the simultaneous estimation method of Roy and Bose (1953).
 #'
 #' @param object an object returned by \code{\link{riskCurve}}
 #' @param boot an object returned by \code{\link{bootRiskCurve}}
@@ -819,16 +819,43 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' @param null a character string specifying the null hypothesis to be tested; one of \code{"H01"} and \code{"H02"} as introduced above
 #' @param overallPlaRisk a numeric value of the estimated overall clinical endpoint risk in the placebo group. It is required when \code{null} equals \code{"H01"}.
 #' @param overallTxRisk a numeric value of the estimated overall clinical endpoint risk in the treatment group. It is required when \code{null} equals \code{"H01"}.
+#' @param MCEPconstantH02 the constant \eqn{c} in the null hypothesis \eqn{H_0^2}. It is required when \code{null} equals \code{"H02"}.
+#' @param limS1 a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)} and that is used in the evaluation of the null hypothesis
+#' \eqn{H_0^2}. If \code{NULL} (default), then \eqn{H_0^2} is evaluated for all \eqn{s_1}.
 #'
-# returns a two-sided p-value from the test of {H01: mCEP(s1)=CE for all s1} or from the test of {H02: mCEP(s1)=a known 'nullConstant' for s1 in S}
-# 'plaRiskCurvePointEst' and 'txRiskCurvePointEst' are numeric vectors
-# 'plaRiskCurveBootEst' and 'txRiskCurveBootEst' are length(markerVals) x nBoot matrices
-# 'plaRiskOverall' and 'txRiskOverall' are numeric values and need to be specified if null=="H01"
-# 'tMCEPconstantNull' is a numeric value and needs to be specified if null=="H02"
-# 'MCEPcontrast' must be one of "multiplicativeTE" or "additiveTE"
-# 'null' must be one of "H01" and "H02"
-# 'S1' is a numeric vector specifying a grid of marker values on which the risk curve estimates are calculated; it needs to be specified if 'limS' is specified
-# 'limS1' is a numeric vector specifying the minimum and maximum S(1) value in H02 and must be specified if null=="H02"
+#' @return The output object is a numeric value representing the two-sided p-value from the test of either \eqn{H_0^1} or \eqn{H_0^2}.
+#'
+#' @examples
+#' n <- 500
+#' Z <- rep(0:1, each=n/2)
+#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
+#' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
+#' X <- rbinom(n,1,0.5)
+#' # delete S(1) in placebo recipients
+#' S[Z==0,3] <- NA
+#' # delete S(0) in treatment recipients
+#' S[Z==1,2] <- NA
+#' # generate the indicator of being sampled into the phase 2 subset
+#' phase2 <- rbinom(n,1,0.4)
+#' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
+#' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
+#' # delete Sb in cases not included in the phase 2 subset
+#' S[Y==1 & phase2==0,1] <- NA
+#' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
+#' colnames(data) <- c("X","Z","Sb","S","Y")
+#' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
+#' grid <- seq(qS[1], qS[2], length.out=5)
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+#' fit <- glm(Y ~ Z, data=data, family=binomial)
+#' prob <- predict(fit, newdata=data.frame(Z=0:1), type="response")
+#'
+#' testConstancy(out, boot, contrast="te", null="H01", overallPlaRisk=prob[1], overallTxRisk=prob[2])
+#' testConstancy(out, boot, contrast="te", null="H02", MCEPconstantH02=0, limS1=c(qS[1],1.5))
+#'
+#' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{testEquality}}
+#' @export
 testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), null=c("H01", "H02"), overallPlaRisk=NULL, overallTxRisk=NULL, MCEPconstantH02=NULL, limS1=NULL){
   contrast <- match.arg(contrast)
   null <- match.arg(null)
@@ -844,8 +871,8 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
     if (!is.null(limS1)){
       object$plaRiskCurve <- object$plaRiskCurve[object$biomarkerGrid>=limS1[1] & object$biomarkerGrid<=limS1[2]]
       object$txRiskCurve <- object$txRiskCurve[object$biomarkerGrid>=limS1[1] & object$biomarkerGrid<=limS1[2]]
-      boot$plaRiskCurveBoot <- boot$plaRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],]
-      boot$txRiskCurveBoot <- boot$txRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],]
+      boot$plaRiskCurveBoot <- boot$plaRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],,drop=FALSE]
+      boot$txRiskCurveBoot <- boot$txRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],,drop=FALSE]
     }
   }
 
@@ -854,7 +881,7 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
   # transformed bootstrapped MCEP curves
   tbMCEP <- tContrastRiskCurve(boot, contrast)
 
-  # bootstrap SE of tMCEP estimates
+  # bootstrap SE based on tbMCEP estimates
   bSE <- apply(tbMCEP, 1, sd, na.rm=TRUE)
 
   # calculate the supremum statistic for each bootstrap sample
@@ -875,6 +902,105 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
     testStat <- max(abs(tMCEP-tMCEPconstantH02)/bSE, na.rm=TRUE)
     return(mean(supAbsZ > testStat))
   }
+}
+
+#' Testing of the Null Hypothesis of Equal Marginal Causal Effect Predictiveness Curves for Two Biomarkers, Endpoints, or Baseline Covariate Subgroups
+#'
+#' Computes a two-sided p-value either from the test of \{\eqn{H_0^3: mCEP_1(s_1)=mCEP_2(s_1)} for all \eqn{s_1} in \code{limS1}\}, where \eqn{mCEP_1} and \eqn{mCEP_2} are
+#' each associated with either a different biomarker (measured in the same units) or a different endpoint or both, or from the test of \{\eqn{H_0^4: mCEP(s_1|X=0)=
+#' mCEP(s_1|X=1)} for all \eqn{s_1} in \code{limS1}\}, where \eqn{X} is a baseline dichotomous phase 1 covariate of interest, each against a general alternative
+#' hypothesis. The testing procedures are described in Juraska, Huang, and Gilbert (2018) and are based on the simultaneous estimation method of Roy and Bose (1953).
+#'
+#' @param object1 an object returned by \code{\link{riskCurve}} pertaining to either \eqn{mCEP_1(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=0)} in \eqn{H_0^4}
+#' @param object2 an object returned by \code{\link{riskCurve}} pertaining to either \eqn{mCEP_2(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=1)} in \eqn{H_0^4}
+#' @param boot1 an object returned by \code{\link{bootRiskCurve}} pertaining to either \eqn{mCEP_1(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=0)} in \eqn{H_0^4}
+#' @param boot2 an object returned by \code{\link{bootRiskCurve}} pertaining to either \eqn{mCEP_2(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=1)} in \eqn{H_0^4}
+#' @param contrast a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"}
+#' (log relative risk), and \code{"rd"} (risk difference [placebo minus treatment]).
+#' @param null a character string specifying the null hypothesis to be tested; one of \code{"H03"} and \code{"H04"} as introduced above
+#' @param limS1 a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)}. If \code{NULL} (default), then the specified null
+#' hypothesis is evaluated for all \eqn{s_1}.
+#'
+#' @return The output object is a numeric value representing the two-sided p-value from the test of either \eqn{H_0^3} or \eqn{H_0^4}.
+#'
+#' @examples
+#' n <- 500
+#' Z <- rep(0:1, each=n/2)
+#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
+#' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
+#' X <- rbinom(n,1,0.5)
+#' # delete S(1) in placebo recipients
+#' S[Z==0,3] <- NA
+#' # delete S(0) in treatment recipients
+#' S[Z==1,2] <- NA
+#' # generate the indicator of being sampled into the phase 2 subset
+#' phase2 <- rbinom(n,1,0.4)
+#' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
+#' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
+#' # delete Sb in cases not included in the phase 2 subset
+#' S[Y==1 & phase2==0,1] <- NA
+#' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
+#' colnames(data) <- c("X","Z","Sb","S","Y")
+#' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
+#' grid <- seq(qS[1], qS[2], length.out=5)
+#' out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid)
+#' out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid)
+#' boot0 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid, iter=2, seed=10)
+#' boot1 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid, iter=2, seed=15)
+#'
+#' testEquality(out0, out1, boot0, boot1, contrast="te", null="H04")
+#'
+#' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{testConstancy}}
+#' @export
+testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", "logrr", "rd"), null=c("H03", "H04"), limS1=NULL){
+  contrast <- match.arg(contrast)
+  null <- match.arg(null)
+
+  if (!setequal(object1$biomarkerGrid, object2$biomarkerGrid)){ stop("The estimated risk curves in 'object1' and 'object2' must be evaluated on the same grid of biomarker values.") }
+  if (!setequal(boot1$biomarkerGrid, boot2$biomarkerGrid)){ stop("The bootstrapped risk curves in 'boot1' and 'boot2' must be evaluated on the same grid of biomarker values.") }
+
+  # trim the risk curves if 'limS1' is specified
+  if (!is.null(limS1)){
+    object1$plaRiskCurve <- object1$plaRiskCurve[object1$biomarkerGrid>=limS1[1] & object1$biomarkerGrid<=limS1[2]]
+    object1$txRiskCurve <- object1$txRiskCurve[object1$biomarkerGrid>=limS1[1] & object1$biomarkerGrid<=limS1[2]]
+    object2$plaRiskCurve <- object2$plaRiskCurve[object2$biomarkerGrid>=limS1[1] & object2$biomarkerGrid<=limS1[2]]
+    object2$txRiskCurve <- object2$txRiskCurve[object2$biomarkerGrid>=limS1[1] & object2$biomarkerGrid<=limS1[2]]
+
+    boot1$plaRiskCurveBoot <- boot1$plaRiskCurveBoot[boot1$biomarkerGrid>=limS1[1] & boot1$biomarkerGrid<=limS1[2],,drop=FALSE]
+    boot1$txRiskCurveBoot <- boot1$txRiskCurveBoot[boot1$biomarkerGrid>=limS1[1] & boot1$biomarkerGrid<=limS1[2],,drop=FALSE]
+    boot2$plaRiskCurveBoot <- boot2$plaRiskCurveBoot[boot2$biomarkerGrid>=limS1[1] & boot2$biomarkerGrid<=limS1[2],,drop=FALSE]
+    boot2$txRiskCurveBoot <- boot2$txRiskCurveBoot[boot2$biomarkerGrid>=limS1[1] & boot2$biomarkerGrid<=limS1[2],,drop=FALSE]
+  }
+
+  # transformed estimated mCEP curves
+  tMCEP1 <- tContrastRiskCurve(object1, contrast)
+  tMCEP2 <- tContrastRiskCurve(object2, contrast)
+  # transformed bootstrapped mCEP curves
+  tbMCEP1 <- tContrastRiskCurve(boot1, contrast)
+  tbMCEP2 <- tContrastRiskCurve(boot2, contrast)
+
+  # difference in the transformed mCEP curves
+  difftMCEP <- tMCEP1 - tMCEP2
+  difftbMCEP <- tbMCEP1 - tbMCEP2
+
+  # bootstrap SE based on tbMCEP estimates
+  if (null=="H03"){
+    bSE <- apply(difftbMCEP, 1, sd, na.rm=TRUE)
+  } else {
+    # take advantage of the independence
+    bSE <- sqrt(apply(tbMCEP1, 1, var, na.rm=TRUE) + apply(tbMCEP2, 1, var, na.rm=TRUE))
+  }
+
+  # calculate the supremum statistic for each bootstrap sample
+  supAbsZ <- NULL
+  for (j in 1:NCOL(difftbMCEP)){
+    Z <- abs((difftbMCEP[,j]-difftMCEP)/bSE)
+    supAbsZ <- c(supAbsZ, max(Z, na.rm=!all(is.na(Z))))
+  }
+
+  testStat <- max(abs(difftMCEP)/bSE, na.rm=TRUE)
+  return(mean(supAbsZ > testStat))
 }
 
 #' Plotting of the Estimated Marginal Causal Effect Predictiveness Curve
