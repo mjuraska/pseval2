@@ -83,7 +83,8 @@ grid <- seq(qS[1], qS[2], length.out=5)
 
 out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
 # alternatively, to save the .RData output file (no '<-' needed):
-riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData", saveDir="./")
+riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData",
+          saveDir="./")
 
 }
 \references{

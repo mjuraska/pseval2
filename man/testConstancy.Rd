@@ -57,11 +57,13 @@ colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=5)
 out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
-boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+                      biomarkerGrid=grid, iter=2, seed=10)
 fit <- glm(Y ~ Z, data=data, family=binomial)
 prob <- predict(fit, newdata=data.frame(Z=0:1), type="response")
 
-testConstancy(out, boot, contrast="te", null="H01", overallPlaRisk=prob[1], overallTxRisk=prob[2])
+testConstancy(out, boot, contrast="te", null="H01", overallPlaRisk=prob[1],
+              overallTxRisk=prob[2])
 testConstancy(out, boot, contrast="te", null="H02", MCEPconstantH02=0, limS1=c(qS[1],1.5))
 
 }

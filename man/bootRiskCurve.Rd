@@ -84,9 +84,11 @@ colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=5)
 
-out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=1, seed=10)
+out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+                     biomarkerGrid=grid, iter=1, seed=10)
 # alternatively, to save the .RData output file (no '<-' needed):
-bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10,
+              saveFile="out.RData", saveDir="./")
 
 }
 \references{
