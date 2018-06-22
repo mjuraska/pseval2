@@ -1,5 +1,3 @@
-# R packages and other R functions used in the CYD14+CYD15 analysis reported in the application section
-
 #' @import graphics
 NULL
 #' @import stats
@@ -14,11 +12,6 @@ NULL
 NULL
 #' @import MASS
 NULL
-
-library(osDesign)
-library(np)
-library(chngpt)
-library(MASS)
 
 logit <- function(p){
   return(log(p/(1-p)))
@@ -204,6 +197,8 @@ risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, cha
 #' \item \code{cpointPboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the placebo group in each bootstrap sample
 #' \item \code{cpointTboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the treatment group in each bootstrap sample
 #' }
+#'
+#' @references Fong, Y., Huang, Y., Gilbert, P. B., and Permar, S. R. (2017), chngpt: threshold regression model estimation and inference, \emph{BMC Bioinformatics}, 18.
 #'
 #' @examples
 #' n <- 500
@@ -494,6 +489,12 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' \item \code{cpointT}: if \code{hinge=TRUE}, the estimate of the hinge point in the treatment group
 #' }
 #'
+#' @references Fong, Y., Huang, Y., Gilbert, P. B., and Permar, S. R. (2017), chngpt: threshold regression model estimation and inference, \emph{BMC Bioinformatics}, 18.
+#'
+#' Hall, P., Racine, J., and Li, Q. (2004), Cross-validation and the estimation of conditional probability densities, \emph{JASA} 99(468), 1015-1026.
+#'
+#' Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
+#'
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
@@ -724,7 +725,9 @@ invtContrastRiskCurve <- function(x, contrast){
 #' @param confLevel the confidence level of pointwise and simultaneous confidence intervals
 #' @param \dots for other methods
 #'
-#' @return The output object is a data frame containing point and possibly interval estimates of the specified mCEP curve.
+#' @return A data frame containing point and possibly interval estimates of the specified mCEP curve.
+#'
+#' @references Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
 #'
 #' @examples
 #' n <- 500
@@ -823,7 +826,11 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' @param limS1 a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)} and that is used in the evaluation of the null hypothesis
 #' \eqn{H_0^2}. If \code{NULL} (default), then \eqn{H_0^2} is evaluated for all \eqn{s_1}.
 #'
-#' @return The output object is a numeric value representing the two-sided p-value from the test of either \eqn{H_0^1} or \eqn{H_0^2}.
+#' @return A numeric value representing the two-sided p-value from the test of either \eqn{H_0^1} or \eqn{H_0^2}.
+#'
+#' @references Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
+#'
+#' Roy, S. N. and Bose, R. C. (1953), Simultaneous condence interval estimation, \emph{The Annals of Mathematical Statistics}, 24, 513-536.
 #'
 #' @examples
 #' n <- 500
@@ -921,7 +928,11 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 #' @param limS1 a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)}. If \code{NULL} (default), then the specified null
 #' hypothesis is evaluated for all \eqn{s_1}.
 #'
-#' @return The output object is a numeric value representing the two-sided p-value from the test of either \eqn{H_0^3} or \eqn{H_0^4}.
+#' @return A numeric value representing the two-sided p-value from the test of either \eqn{H_0^3} or \eqn{H_0^4}.
+#'
+#' @references Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
+#'
+#' Roy, S. N. and Bose, R. C. (1953), Simultaneous condence interval estimation, \emph{The Annals of Mathematical Statistics}, 24, 513-536.
 #'
 #' @examples
 #' n <- 500
