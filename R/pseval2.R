@@ -222,9 +222,11 @@ risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, cha
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=5)
 #'
-#' out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=1, seed=10)
+#' out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+#'                      biomarkerGrid=grid, iter=1, seed=10)
 #' # alternatively, to save the .RData output file (no '<-' needed):
-#' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+#' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10,
+#'               saveFile="out.RData", saveDir="./")
 #'
 #' @seealso \code{\link{riskCurve}}
 #' @export
@@ -519,7 +521,8 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #'
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
 #' # alternatively, to save the .RData output file (no '<-' needed):
-#' riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData", saveDir="./")
+#' riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData",
+#'           saveDir="./")
 #'
 #' @seealso \code{\link{bootRiskCurve}}
 #' @export
@@ -752,7 +755,8 @@ invtContrastRiskCurve <- function(x, contrast){
 #' grid <- seq(qS[1], qS[2], length.out=5)
 #'
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
-#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+#'                       biomarkerGrid=grid, iter=2, seed=10)
 #' summary(out, boot, contrast="te")
 #'
 #' @seealso \code{\link{riskCurve}} and \code{\link{bootRiskCurve}}
@@ -854,11 +858,13 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=5)
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
-#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+#'                       biomarkerGrid=grid, iter=2, seed=10)
 #' fit <- glm(Y ~ Z, data=data, family=binomial)
 #' prob <- predict(fit, newdata=data.frame(Z=0:1), type="response")
 #'
-#' testConstancy(out, boot, contrast="te", null="H01", overallPlaRisk=prob[1], overallTxRisk=prob[2])
+#' testConstancy(out, boot, contrast="te", null="H01", overallPlaRisk=prob[1],
+#'               overallTxRisk=prob[2])
 #' testConstancy(out, boot, contrast="te", null="H02", MCEPconstantH02=0, limS1=c(qS[1],1.5))
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{testEquality}}
@@ -957,8 +963,10 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 #' grid <- seq(qS[1], qS[2], length.out=5)
 #' out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid)
 #' out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid)
-#' boot0 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid, iter=2, seed=10)
-#' boot1 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid, iter=2, seed=15)
+#' boot0 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,],
+#'                        biomarkerGrid=grid, iter=2, seed=10)
+#' boot1 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,],
+#'                        biomarkerGrid=grid, iter=2, seed=15)
 #'
 #' testEquality(out0, out1, boot0, boot1, contrast="te", null="H04")
 #'
@@ -1049,7 +1057,8 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' grid <- seq(qS[1], qS[2], length.out=5)
 #'
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
-#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid, iter=2, seed=10)
+#' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+#'                       biomarkerGrid=grid, iter=2, seed=10)
 #' sout <- summary(out, boot, contrast="te")
 #' plotMCEPcurve(sout)
 #'
