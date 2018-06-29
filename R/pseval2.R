@@ -30,7 +30,7 @@ tpsPredict <- function(fit, newMatrix){
 
 # 'hNum' returns function values at s0 of the integrand in the numerator of P{Y(0)=1 | S(1)=s1}
 # s0 is a numeric vector, whereas s1 is a scalar
-hNum <- function(s0, s1, lev, vars, data, tpsFit, changePoint=NULL, npcdensFit1, npcdensFit2){
+hNum <- function(s0, s1, lev, vars, data, pstype, bsmtype, tpsFit, changePoint=NULL, npcdensFit1, npcdensFit2){
   ss0 <- s0
   if (!is.null(changePoint)){ ss0 <- ifelse(s0>changePoint, s0-changePoint, 0) }
 
@@ -56,10 +56,14 @@ hNum <- function(s0, s1, lev, vars, data, tpsFit, changePoint=NULL, npcdensFit1,
     dfVars <- as.data.frame(matrix(predictLevels, nrow=length(s0), ncol=length(predictLevels), byrow=TRUE))
     colnames(dfVars) <- vars
 
+    if (pstype=="ordered"){ s1 <- ordered(s1) }
+    if (bsmtype=="ordered"){ s0 <- ordered(s0) }
     fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, dfVars, S=s1))
     ghat.s0 <- predict(npcdensFit2, newdata=data.frame(dfVars, S=s0))
   } else {
     phat.s0 <- tpsPredict(tpsFit, cbind(1, ss0))
+    if (pstype=="ordered"){ s1 <- ordered(s1) }
+    if (bsmtype=="ordered"){ s0 <- ordered(s0) }
     fhat.s0 <- predict(npcdensFit1, newdata=data.frame(Sb=s0, S=s1))
     ghat.s0 <- predict(npcdensFit2, newdata=data.frame(S=s0))
   }
@@ -69,7 +73,7 @@ hNum <- function(s0, s1, lev, vars, data, tpsFit, changePoint=NULL, npcdensFit1,
 
 # 'hDen' returns function values at s0 of the integrand in the denominator of risk_{(0)}(s_1)
 # s0 is a numeric vector, whereas s1 is a scalar
-hDen <- function(s0, s1, lev, vars, data, npcdensFit1, npcdensFit2){
+hDen <- function(s0, s1, lev, vars, data, pstype, bsmtype, npcdensFit1, npcdensFit2){
   # if any baseline covariates are specified
   if (length(vars)>=1){
     lev1names <- names(which(lev==1))
@@ -112,7 +116,7 @@ propX <- function(X, lev){
 # s1 is a scalar
 # all baseline covariates are assumed to be discrete variables with a finite number of categories
 # 'formula' is a one-sided formula of baseline covariates
-riskP <- function(s1, formula, data, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
+riskP <- function(s1, formula, data, pstype, bsmtype, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
   den <- num <- 0
   UL <- 1.05 * max(data$S, na.rm=TRUE) # if integration over (0,Inf) fails, use (0,UL)
 
@@ -124,13 +128,13 @@ riskP <- function(s1, formula, data, tpsFit, npcdensFit1, npcdensFit2, changePoi
     lev <- drop(Xu[i,])
     names(lev) <- colnames(Xu)
     pX <- propX(X, lev)
-    hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, lev=lev, vars=vars, data=data, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
+    hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
     if (inherits(hNumInt, 'try-error')){
-      num <- num + pX*integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
+      num <- num + pX*integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
     } else {
       num <- num + pX*hNumInt
     }
-    den <- den + pX*integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
+    den <- den + pX*integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
   }
 
   return(num/den)
@@ -149,9 +153,9 @@ riskV <- function(s1, data, data2, changePoint=NULL){
 
 # 'risk' returns the estimates of risk in each study group for a given s1
 # s1 is a scalar
-risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
+risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1, npcdensFit2, changePoint=NULL){
   risk1 <- riskV(s1, data, data2, changePoint)
-  risk0 <- riskP(s1, formula, data, tpsFit, npcdensFit1, npcdensFit2, changePoint)
+  risk0 <- riskP(s1, formula, data, pstype, bsmtype, tpsFit, npcdensFit1, npcdensFit2, changePoint)
   return(list(plaRisk=risk0, txRisk=risk1))
 }
 
@@ -169,6 +173,14 @@ risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, cha
 #' @param tx a character string specifying the variable name in \code{data} representing the treatment group indicator
 #' @param data a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
 #' \code{tx}. Values of \code{bsm} and the biomarker at \eqn{t_0} that are unavailable are represented as \code{NA}.
+#' @param pstype a character string specifying whether the biomarker response shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+#' kernel density/probability estimation
+#' @param bsmtype a character string specifying whether the baseline surrogate measure shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+#' kernel density/probability estimation
+#' @param bwtype a character string specifying the bandwidth type for continuous variables in the kernel density estimation. The options are \code{fixed} (default) for fixed
+#' bandwidths, \code{generalized_nn} for generalized nearest neighbors, and \code{adaptive_nn} for adaptive nearest neighbors. As noted in the documentation of the function
+#' \code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}. 
+#' Generalized nearest-neighbor bandwidths change with the point at which the density is estimated, \eqn{x}. Fixed bandwidths are constant over the support of \eqn{x}."
 #' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 #' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk. The hinge point
 #' is reestimated in each bootstrap sample.
@@ -228,13 +240,18 @@ risk <- function(s1, formula, data, data2, tpsFit, npcdensFit1, npcdensFit2, cha
 #' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10,
 #'               saveFile="out.RData", saveDir="./")
 #'
-#' @seealso \code{\link{riskCurve}}
+#' @seealso \code{\link{riskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{bootMCEPcurve}}
 #' @export
-bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, seed=NULL, saveFile=NULL, saveDir=NULL){
+bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"), 
+                          hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, seed=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
   if (missing(iter)){ stop("The number of bootstrap iterations in argument 'iter' is missing.") }
+  
+  pstype <- match.arg(pstype)
+  bsmtype <- match.arg(bsmtype)
+  bwtype <- match.arg(bwtype)
 
   if (!is.null(weights)){
     if (is.character(weights)){
@@ -291,18 +308,23 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
   dataT2correctRatio <- rbind(dataTControls2, dataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
   rm(dataPControls2); rm(dataPCases2); rm(dataTControls2); rm(dataTCases2)
 
-  # estimate optimal bandwidths for kernel estimates of the conditional densities
+  # estimate optimal bandwidths for kernel estimates of the conditional (or unconditional) densities
+  Sterm <- "S"
+  if (pstype=="ordered"){ Sterm <- "ordered(S)"}
+  Sbterm <- "Sb"
+  if (bsmtype=="ordered"){ Sbterm <- "ordered(Sb)"}
+  
   if (anyBaselineCovar){
-    fm.fbw <- as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+")))
-    fm.gbw <- as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
-    gbw <- npcdensbw(fm.gbw, data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+    fm.fbw <- as.formula(paste0(Sterm," ~ ",paste(c(Sbterm,formulaDecomp[[2]][-1]),collapse="+")))
+    fm.gbw <- as.formula(paste0(Sterm," ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
+    gbw <- npcdensbw(fm.gbw, data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov", bwtype=bwtype)
   } else {
-    fm.fbw <- S ~ Sb
-    fm.gbw <- ~ S
+    fm.fbw <- as.formula(paste0(Sterm," ~ ",Sbterm))
+    fm.gbw <- as.formula(paste0("~ ",Sterm))
     # marginal density
-    gbw <- npudensbw(fm.gbw, data=dataP2correctRatio, ckertype="epanechnikov")
+    gbw <- npudensbw(fm.gbw, data=dataP2correctRatio, ckertype="epanechnikov", bwtype=bwtype)
   }
-  fbw <- npcdensbw(fm.fbw, data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  fbw <- npcdensbw(fm.fbw, data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov", bwtype=bwtype)
 
   if(!is.null(seed)){ set.seed(seed) }
   bSampleControls <- matrix(sample(1:nControls, nControls*iter, replace=TRUE), nrow=nControls, ncol=iter)
@@ -314,7 +336,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
   }
   rm(data2)
 
-  bRiskCurveList <- lapply(1:iter, function(i, formulaDecomp){
+  bRiskCurveList <- lapply(1:iter, function(i, formulaDecomp, Sterm, Sbterm){
     # create a bootstrap sample
     bdata <- rbind(dataControls[bSampleControls[,i],], dataCases[bSampleCases[,i],])
     # extract the bootstrap subset with phase 2 data
@@ -389,17 +411,27 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
     bdataP2correctRatio <- rbind(bdataPControls2, bdataPCases2[sample(1:nPCases2, max(1,round(nPCases2new,0))),])
     bdataT2correctRatio <- rbind(bdataTControls2, bdataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
     rm(bdataPControls2); rm(bdataPCases2); rm(bdataTControls2); rm(bdataTCases2)
+    
+    # ensure that all factor levels of S and Sb in the data used for computing 'fbw' and 'gbw' are included in the data used for computing 'bfbw' and 'bgbw'
+    if (Sterm=="ordered(S)"){
+      bdataP2correctRatio$S <- factor(bdataP2correctRatio$S, levels=levels(ordered(dataP2correctRatio$S)), ordered=TRUE)
+      bdataT2correctRatio$S <- factor(bdataT2correctRatio$S, levels=levels(ordered(dataT2correctRatio$S)), ordered=TRUE)
+    }
+    
+    if (Sbterm=="ordered(Sb)"){
+      bdataT2correctRatio$Sb <- factor(bdataT2correctRatio$Sb, levels=levels(ordered(dataT2correctRatio$Sb)), ordered=TRUE)
+    }
 
     # kernel density estimator for g(s0|X=x) using the placebo group in the phase 2 subset
     if (anyBaselineCovar){
       # the formulas are reintroduced in the 'lapply' so that 'npcdensbw' and 'npudensbw' are able to evaluate them in the parent.frame() environment
-      fm.fbw <- as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+")))
-      fm.gbw <- as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
+      fm.fbw <- as.formula(paste0(Sterm," ~ ",paste(c(Sbterm,formulaDecomp[[2]][-1]),collapse="+")))
+      fm.gbw <- as.formula(paste0(Sterm," ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
       bgbw <- npcdensbw(fm.gbw, data=bdataP2correctRatio, bws=gbw, bandwidth.compute=FALSE)
       ghat <- npcdens(bgbw)
     } else {
-      fm.fbw <- S ~ Sb
-      fm.gbw <- ~ S
+      fm.fbw <- as.formula(paste0(Sterm," ~ ",Sbterm))
+      fm.gbw <- as.formula(paste0("~ ",Sterm))
       # marginal density
       bgbw <- npudensbw(fm.gbw, data=bdataP2correctRatio, bws=gbw, bandwidth.compute=FALSE)
       ghat <- npudens(bgbw)
@@ -415,7 +447,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
     } else {
       fm <- ~ 1
     }
-    curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, bdata, bdata2, fit1, fhat, ghat, cpoint) })
+    curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, bdata, bdata2, pstype, bsmtype, fit1, fhat, ghat, cpoint) })
     plaRiskCurve <- sapply(curves, "[[", "plaRisk")
     txRiskCurve <- sapply(curves, "[[", "txRisk")
 
@@ -427,7 +459,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
     }
 
     return(out)
-  }, formulaDecomp=formulaDecomp)
+  }, formulaDecomp=formulaDecomp, Sterm=Sterm, Sbterm=Sbterm)
 
   # cbind all bootstrap risk curves
   plaRiskCurveBoot <- sapply(bRiskCurveList,"[[","plaRiskCurve")
@@ -451,10 +483,11 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure Three-Phase Sampling Design
 #'
 #' Estimates \eqn{P\{Y(z)=1|S(1)=s_1\}}, \eqn{z=0,1}, on a grid of \eqn{s_1} values following the estimation method of Juraska, Huang, and Gilbert (2018), where \eqn{Z} is the
-#' treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a discrete or continuous univariate biomarker under assignment to \eqn{Z=z}
+#' treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a continuous or ordered categorical univariate biomarker under assignment to \eqn{Z=z}
 #' measured at fixed time \eqn{t_0} after randomization, and \eqn{Y} is a binary clinical endpoint (\eqn{Y=1}, disease; \eqn{Y=0}, no disease) measured after \eqn{t_0}. The
-#' estimator employs the generalized product kernel density estimation method of Hall, Racine, and Li (2004). The risks \eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where
-#' \eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression models.
+#' estimator employs the generalized product kernel density/probability estimation method of Hall, Racine, and Li (2004) implemented in the \code{np} package. The risks 
+#' \eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where \eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression 
+#' models using the \code{osDesign} package.
 #'
 #' @param formula a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
 #' at \eqn{t0} and all variables that follow, if any, are discrete baseline covariates specified in all fitted models that condition on them. Interactions and transformations
@@ -463,6 +496,14 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' @param tx a character string specifying the variable name in \code{data} representing the treatment group indicator
 #' @param data a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
 #' \code{tx}. Values of \code{bsm} and the biomarker at \eqn{t_0} that are unavailable are represented as \code{NA}.
+#' @param pstype a character string specifying whether the biomarker response shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+#' kernel density/probability estimation
+#' @param bsmtype a character string specifying whether the baseline surrogate measure shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+#' kernel density/probability estimation
+#' @param bwtype a character string specifying the bandwidth type for continuous variables in the kernel density estimation. The options are \code{fixed} (default) for fixed
+#' bandwidths, \code{generalized_nn} for generalized nearest neighbors, and \code{adaptive_nn} for adaptive nearest neighbors. As noted in the documentation of the function
+#' \code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}. 
+#' Generalized nearest-neighbor bandwidths change with the point at which the density is estimated, \eqn{x}. Fixed bandwidths are constant over the support of \eqn{x}."
 #' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 #' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk.
 #' @param weights either a numeric vector of weights or a character string specifying the variable name in \code{data} representing weights applied to observations
@@ -476,7 +517,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.
 #'
 #' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
-#' The output object (of class \code{"riskCurve"}) is a list with the following components:
+#' The output object (of class \code{riskCurve}) is a list with the following components:
 #' \itemize{
 #' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
 #' \code{txRiskCurve}
@@ -524,12 +565,17 @@ bootRiskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, bio
 #' riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData",
 #'           saveDir="./")
 #'
-#' @seealso \code{\link{bootRiskCurve}}
+#' @seealso \code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
-riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomarkerGrid=NULL, saveFile=NULL, saveDir=NULL){
+riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"), 
+                      hinge=FALSE, weights=NULL, biomarkerGrid=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
+  
+  pstype <- match.arg(pstype)
+  bsmtype <- match.arg(bsmtype)
+  bwtype <- match.arg(bwtype)
 
   if (!is.null(weights)){
     if (is.character(weights)){
@@ -564,7 +610,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
 
   # standardize the variable name for the binary clinical endpoint measured after t0
   colnames(data)[colnames(data)==formulaDecomp[[1]]] <- "Y"
-
+  
   # extract the subset with available phase 2 data (i.e., with measured S)
   data2 <- subset(data, !is.na(S))
 
@@ -593,18 +639,23 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
   dataT2correctRatio <- rbind(dataTControls2, dataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
   rm(dataPControls2); rm(dataPCases2); rm(dataTControls2); rm(dataTCases2)
 
-  # estimate optimal bandwidths for kernel estimates of the conditional densities
+  # estimate optimal bandwidths for kernel estimates of the conditional (or unconditional) densities
+  Sterm <- "S"
+  if (pstype=="ordered"){ Sterm <- "ordered(S)"}
+  Sbterm <- "Sb"
+  if (bsmtype=="ordered"){ Sbterm <- "ordered(Sb)"}
+  
   if (anyBaselineCovar){
-    fm.fbw <- as.formula(paste0("S ~ ",paste(c("Sb",formulaDecomp[[2]][-1]),collapse="+")))
-    fm.gbw <- as.formula(paste0("S ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
-    gbw <- npcdensbw(fm.gbw, data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+    fm.fbw <- as.formula(paste0(Sterm," ~ ",paste(c(Sbterm,formulaDecomp[[2]][-1]),collapse="+")))
+    fm.gbw <- as.formula(paste0(Sterm," ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
+    gbw <- npcdensbw(fm.gbw, data=dataP2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov", bwtype=bwtype)
   } else {
-    fm.fbw <- S ~ Sb
-    fm.gbw <- ~ S
+    fm.fbw <- as.formula(paste0(Sterm," ~ ",Sbterm))
+    fm.gbw <- as.formula(paste0("~ ",Sterm))
     # marginal density
-    gbw <- npudensbw(fm.gbw, data=dataP2correctRatio, ckertype="epanechnikov")
+    gbw <- npudensbw(fm.gbw, data=dataP2correctRatio, ckertype="epanechnikov", bwtype=bwtype)
   }
-  fbw <- npcdensbw(fm.fbw, data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov")
+  fbw <- npcdensbw(fm.fbw, data=dataT2correctRatio, cxkertype="epanechnikov", cykertype="epanechnikov", bwtype=bwtype)
 
   if (hinge){
     # calculate weights for passing on to 'chngptm'
@@ -652,7 +703,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
     }
     fit1 <- tps(fm, data=subset(data2, Z==0 & !is.na(Y)), nn0=nPControls, nn1=nPCases, group=rep(1, NROW(subset(data2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
   }
-
+  
   # kernel density estimator for f(s1|Sb=s0, X=x) using the treatment group in the phase 2 subset
   fhat <- npcdens(fbw)
 
@@ -674,7 +725,7 @@ riskCurve <- function(formula, bsm, tx, data, hinge=FALSE, weights=NULL, biomark
   } else {
     fm <- ~ 1
   }
-  curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, data, data2, fit1, fhat, ghat, cpoint) })
+  curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, data, data2, pstype, bsmtype, fit1, fhat, ghat, cpoint) })
   plaRiskCurve <- sapply(curves, "[[", "plaRisk")
   txRiskCurve <- sapply(curves, "[[", "txRisk")
 
@@ -721,9 +772,9 @@ invtContrastRiskCurve <- function(x, contrast){
 #' Summarizes point estimates and pointwise and simultaneous Wald-type bootstrap confidence intervals for a specified marginal causal effect predictiveness (mCEP) curve (see,
 #' e.g., Juraska, Huang, and Gilbert (2018) for the definition).
 #'
-#' @param object an object of class \code{"riskCurve"}, typically returned by \code{\link{riskCurve}}
+#' @param object an object of class \code{riskCurve}, typically returned by \code{\link{riskCurve}}
 #' @param boot an object returned by \code{\link{bootRiskCurve}}. If \code{NULL} (default), only point estimates are reported.
-#' @param contrast a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"} (log relative risk), and \code{"rd"} (risk
+#' @param contrast a character string specifying the mCEP curve. It must be one of \code{te} (treatment efficacy), \code{rr} (relative risk), \code{logrr} (log relative risk), and \code{rd} (risk
 #' difference [placebo minus treatment]).
 #' @param confLevel the confidence level of pointwise and simultaneous confidence intervals
 #' @param \dots for other methods
@@ -821,12 +872,12 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #'
 #' @param object an object returned by \code{\link{riskCurve}}
 #' @param boot an object returned by \code{\link{bootRiskCurve}}
-#' @param contrast a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"}
-#' (log relative risk), and \code{"rd"} (risk difference [placebo minus treatment]).
-#' @param null a character string specifying the null hypothesis to be tested; one of \code{"H01"} and \code{"H02"} as introduced above
-#' @param overallPlaRisk a numeric value of the estimated overall clinical endpoint risk in the placebo group. It is required when \code{null} equals \code{"H01"}.
-#' @param overallTxRisk a numeric value of the estimated overall clinical endpoint risk in the treatment group. It is required when \code{null} equals \code{"H01"}.
-#' @param MCEPconstantH02 the constant \eqn{c} in the null hypothesis \eqn{H_0^2}. It is required when \code{null} equals \code{"H02"}.
+#' @param contrast a character string specifying the mCEP curve. It must be one of \code{te} (treatment efficacy), \code{rr} (relative risk), \code{logrr}
+#' (log relative risk), and \code{rd} (risk difference [placebo minus treatment]).
+#' @param null a character string specifying the null hypothesis to be tested; one of \code{H01} and \code{H02} as introduced above
+#' @param overallPlaRisk a numeric value of the estimated overall clinical endpoint risk in the placebo group. It is required when \code{null} equals \code{H01}.
+#' @param overallTxRisk a numeric value of the estimated overall clinical endpoint risk in the treatment group. It is required when \code{null} equals \code{H01}.
+#' @param MCEPconstantH02 the constant \eqn{c} in the null hypothesis \eqn{H_0^2}. It is required when \code{null} equals \code{H02}.
 #' @param limS1 a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)} and that is used in the evaluation of the null hypothesis
 #' \eqn{H_0^2}. If \code{NULL} (default), then \eqn{H_0^2} is evaluated for all \eqn{s_1}.
 #'
@@ -928,9 +979,9 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 #' @param object2 an object returned by \code{\link{riskCurve}} pertaining to either \eqn{mCEP_2(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=1)} in \eqn{H_0^4}
 #' @param boot1 an object returned by \code{\link{bootRiskCurve}} pertaining to either \eqn{mCEP_1(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=0)} in \eqn{H_0^4}
 #' @param boot2 an object returned by \code{\link{bootRiskCurve}} pertaining to either \eqn{mCEP_2(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=1)} in \eqn{H_0^4}
-#' @param contrast a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"}
-#' (log relative risk), and \code{"rd"} (risk difference [placebo minus treatment]).
-#' @param null a character string specifying the null hypothesis to be tested; one of \code{"H03"} and \code{"H04"} as introduced above
+#' @param contrast a character string specifying the mCEP curve. It must be one of \code{te} (treatment efficacy), \code{rr} (relative risk), \code{logrr}
+#' (log relative risk), and \code{rd} (risk difference [placebo minus treatment]).
+#' @param null a character string specifying the null hypothesis to be tested; one of \code{H03} and \code{H04} as introduced above
 #' @param limS1 a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)}. If \code{NULL} (default), then the specified null
 #' hypothesis is evaluated for all \eqn{s_1}.
 #'
