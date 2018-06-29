@@ -4,7 +4,9 @@
 \alias{riskCurve}
 \title{Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure Three-Phase Sampling Design}
 \usage{
-riskCurve(formula, bsm, tx, data, hinge = FALSE, weights = NULL,
+riskCurve(formula, bsm, tx, data, pstype = c("continuous", "ordered"),
+  bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
+  "generalized_nn", "adaptive_nn"), hinge = FALSE, weights = NULL,
   biomarkerGrid = NULL, saveFile = NULL, saveDir = NULL)
 }
 \arguments{
@@ -18,6 +20,17 @@ of the baseline covariates are allowed. All terms in the formula must be evaluab
 
 \item{data}{a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
 \code{tx}. Values of \code{bsm} and the biomarker at \eqn{t_0} that are unavailable are represented as \code{NA}.}
+
+\item{pstype}{a character string specifying whether the biomarker response shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+kernel density/probability estimation}
+
+\item{bsmtype}{a character string specifying whether the baseline surrogate measure shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+kernel density/probability estimation}
+
+\item{bwtype}{a character string specifying the bandwidth type for continuous variables in the kernel density estimation. The options are \code{fixed} (default) for fixed
+bandwidths, \code{generalized_nn} for generalized nearest neighbors, and \code{adaptive_nn} for adaptive nearest neighbors. As noted in the documentation of the function
+\code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}.
+Generalized nearest-neighbor bandwidths change with the point at which the density is estimated, \eqn{x}. Fixed bandwidths are constant over the support of \eqn{x}."}
 
 \item{hinge}{a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk.}
@@ -37,7 +50,7 @@ a grid of values spanning the range of observed values of the biomarker will be 
 }
 \value{
 If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
-The output object (of class \code{"riskCurve"}) is a list with the following components:
+The output object (of class \code{riskCurve}) is a list with the following components:
 \itemize{
 \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
 \code{txRiskCurve}
@@ -54,10 +67,11 @@ of \eqn{S(0)} if no baseline covariates are specified in \code{formula}
 }
 \description{
 Estimates \eqn{P\{Y(z)=1|S(1)=s_1\}}, \eqn{z=0,1}, on a grid of \eqn{s_1} values following the estimation method of Juraska, Huang, and Gilbert (2018), where \eqn{Z} is the
-treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a discrete or continuous univariate biomarker under assignment to \eqn{Z=z}
+treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a continuous or ordered categorical univariate biomarker under assignment to \eqn{Z=z}
 measured at fixed time \eqn{t_0} after randomization, and \eqn{Y} is a binary clinical endpoint (\eqn{Y=1}, disease; \eqn{Y=0}, no disease) measured after \eqn{t_0}. The
-estimator employs the generalized product kernel density estimation method of Hall, Racine, and Li (2004). The risks \eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where
-\eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression models.
+estimator employs the generalized product kernel density/probability estimation method of Hall, Racine, and Li (2004) implemented in the \code{np} package. The risks
+\eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where \eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression
+models using the \code{osDesign} package.
 }
 \examples{
 n <- 500
@@ -95,5 +109,5 @@ Hall, P., Racine, J., and Li, Q. (2004), Cross-validation and the estimation of 
 Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
 }
 \seealso{
-\code{\link{bootRiskCurve}}
+\code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 }

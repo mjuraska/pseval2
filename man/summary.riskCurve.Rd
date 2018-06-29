@@ -8,11 +8,11 @@
   "logrr", "rd"), confLevel = 0.95, ...)
 }
 \arguments{
-\item{object}{an object of class \code{"riskCurve"}, typically returned by \code{\link{riskCurve}}}
+\item{object}{an object of class \code{riskCurve}, typically returned by \code{\link{riskCurve}}}
 
 \item{boot}{an object returned by \code{\link{bootRiskCurve}}. If \code{NULL} (default), only point estimates are reported.}
 
-\item{contrast}{a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"} (log relative risk), and \code{"rd"} (risk
+\item{contrast}{a character string specifying the mCEP curve. It must be one of \code{te} (treatment efficacy), \code{rr} (relative risk), \code{logrr} (log relative risk), and \code{rd} (risk
 difference [placebo minus treatment]).}
 
 \item{confLevel}{the confidence level of pointwise and simultaneous confidence intervals}

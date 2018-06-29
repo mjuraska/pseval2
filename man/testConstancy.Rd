@@ -13,16 +13,16 @@ testConstancy(object, boot, contrast = c("te", "rr", "logrr", "rd"),
 
 \item{boot}{an object returned by \code{\link{bootRiskCurve}}}
 
-\item{contrast}{a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"}
-(log relative risk), and \code{"rd"} (risk difference [placebo minus treatment]).}
+\item{contrast}{a character string specifying the mCEP curve. It must be one of \code{te} (treatment efficacy), \code{rr} (relative risk), \code{logrr}
+(log relative risk), and \code{rd} (risk difference [placebo minus treatment]).}
 
-\item{null}{a character string specifying the null hypothesis to be tested; one of \code{"H01"} and \code{"H02"} as introduced above}
+\item{null}{a character string specifying the null hypothesis to be tested; one of \code{H01} and \code{H02} as introduced above}
 
-\item{overallPlaRisk}{a numeric value of the estimated overall clinical endpoint risk in the placebo group. It is required when \code{null} equals \code{"H01"}.}
+\item{overallPlaRisk}{a numeric value of the estimated overall clinical endpoint risk in the placebo group. It is required when \code{null} equals \code{H01}.}
 
-\item{overallTxRisk}{a numeric value of the estimated overall clinical endpoint risk in the treatment group. It is required when \code{null} equals \code{"H01"}.}
+\item{overallTxRisk}{a numeric value of the estimated overall clinical endpoint risk in the treatment group. It is required when \code{null} equals \code{H01}.}
 
-\item{MCEPconstantH02}{the constant \eqn{c} in the null hypothesis \eqn{H_0^2}. It is required when \code{null} equals \code{"H02"}.}
+\item{MCEPconstantH02}{the constant \eqn{c} in the null hypothesis \eqn{H_0^2}. It is required when \code{null} equals \code{H02}.}
 
 \item{limS1}{a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)} and that is used in the evaluation of the null hypothesis
 \eqn{H_0^2}. If \code{NULL} (default), then \eqn{H_0^2} is evaluated for all \eqn{s_1}.}

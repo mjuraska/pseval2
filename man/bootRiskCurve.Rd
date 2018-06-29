@@ -5,7 +5,9 @@
 \title{Bootstrap Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure
 Three-Phase Sampling Design}
 \usage{
-bootRiskCurve(formula, bsm, tx, data, hinge = FALSE, weights = NULL,
+bootRiskCurve(formula, bsm, tx, data, pstype = c("continuous", "ordered"),
+  bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
+  "generalized_nn", "adaptive_nn"), hinge = FALSE, weights = NULL,
   biomarkerGrid = NULL, iter, seed = NULL, saveFile = NULL,
   saveDir = NULL)
 }
@@ -20,6 +22,17 @@ of the baseline covariates are allowed. All terms in the formula must be evaluab
 
 \item{data}{a data frame with one row per randomized participant endpoint-free at \eqn{t_0} that contains at least the variables specified in \code{formula}, \code{bsm} and
 \code{tx}. Values of \code{bsm} and the biomarker at \eqn{t_0} that are unavailable are represented as \code{NA}.}
+
+\item{pstype}{a character string specifying whether the biomarker response shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+kernel density/probability estimation}
+
+\item{bsmtype}{a character string specifying whether the baseline surrogate measure shall be treated as a \code{continuous} (default) or \code{ordered} categorical variable in the
+kernel density/probability estimation}
+
+\item{bwtype}{a character string specifying the bandwidth type for continuous variables in the kernel density estimation. The options are \code{fixed} (default) for fixed
+bandwidths, \code{generalized_nn} for generalized nearest neighbors, and \code{adaptive_nn} for adaptive nearest neighbors. As noted in the documentation of the function
+\code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}.
+Generalized nearest-neighbor bandwidths change with the point at which the density is estimated, \eqn{x}. Fixed bandwidths are constant over the support of \eqn{x}."}
 
 \item{hinge}{a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk. The hinge point
@@ -95,5 +108,5 @@ bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, se
 Fong, Y., Huang, Y., Gilbert, P. B., and Permar, S. R. (2017), chngpt: threshold regression model estimation and inference, \emph{BMC Bioinformatics}, 18.
 }
 \seealso{
-\code{\link{riskCurve}}
+\code{\link{riskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 }

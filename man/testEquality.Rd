@@ -16,10 +16,10 @@ testEquality(object1, object2, boot1, boot2, contrast = c("te", "rr", "logrr",
 
 \item{boot2}{an object returned by \code{\link{bootRiskCurve}} pertaining to either \eqn{mCEP_2(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=1)} in \eqn{H_0^4}}
 
-\item{contrast}{a character string specifying the mCEP curve. It must be one of \code{"te"} (treatment efficacy), \code{"rr"} (relative risk), \code{"logrr"}
-(log relative risk), and \code{"rd"} (risk difference [placebo minus treatment]).}
+\item{contrast}{a character string specifying the mCEP curve. It must be one of \code{te} (treatment efficacy), \code{rr} (relative risk), \code{logrr}
+(log relative risk), and \code{rd} (risk difference [placebo minus treatment]).}
 
-\item{null}{a character string specifying the null hypothesis to be tested; one of \code{"H03"} and \code{"H04"} as introduced above}
+\item{null}{a character string specifying the null hypothesis to be tested; one of \code{H03} and \code{H04} as introduced above}
 
 \item{limS1}{a numeric vector of length 2 specifying an interval that is a subset of the support of \eqn{S(1)}. If \code{NULL} (default), then the specified null
 hypothesis is evaluated for all \eqn{s_1}.}

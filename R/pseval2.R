@@ -179,7 +179,7 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' kernel density/probability estimation
 #' @param bwtype a character string specifying the bandwidth type for continuous variables in the kernel density estimation. The options are \code{fixed} (default) for fixed
 #' bandwidths, \code{generalized_nn} for generalized nearest neighbors, and \code{adaptive_nn} for adaptive nearest neighbors. As noted in the documentation of the function
-#' \code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}. 
+#' \code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}.
 #' Generalized nearest-neighbor bandwidths change with the point at which the density is estimated, \eqn{x}. Fixed bandwidths are constant over the support of \eqn{x}."
 #' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 #' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk. The hinge point
@@ -240,15 +240,15 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10,
 #'               saveFile="out.RData", saveDir="./")
 #'
-#' @seealso \code{\link{riskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{bootMCEPcurve}}
+#' @seealso \code{\link{riskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
-bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"), 
+bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"),
                           hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, seed=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
   if (missing(iter)){ stop("The number of bootstrap iterations in argument 'iter' is missing.") }
-  
+
   pstype <- match.arg(pstype)
   bsmtype <- match.arg(bsmtype)
   bwtype <- match.arg(bwtype)
@@ -313,7 +313,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
   if (pstype=="ordered"){ Sterm <- "ordered(S)"}
   Sbterm <- "Sb"
   if (bsmtype=="ordered"){ Sbterm <- "ordered(Sb)"}
-  
+
   if (anyBaselineCovar){
     fm.fbw <- as.formula(paste0(Sterm," ~ ",paste(c(Sbterm,formulaDecomp[[2]][-1]),collapse="+")))
     fm.gbw <- as.formula(paste0(Sterm," ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
@@ -411,13 +411,13 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
     bdataP2correctRatio <- rbind(bdataPControls2, bdataPCases2[sample(1:nPCases2, max(1,round(nPCases2new,0))),])
     bdataT2correctRatio <- rbind(bdataTControls2, bdataTCases2[sample(1:nTCases2, max(1,round(nTCases2new,0))),])
     rm(bdataPControls2); rm(bdataPCases2); rm(bdataTControls2); rm(bdataTCases2)
-    
+
     # ensure that all factor levels of S and Sb in the data used for computing 'fbw' and 'gbw' are included in the data used for computing 'bfbw' and 'bgbw'
     if (Sterm=="ordered(S)"){
       bdataP2correctRatio$S <- factor(bdataP2correctRatio$S, levels=levels(ordered(dataP2correctRatio$S)), ordered=TRUE)
       bdataT2correctRatio$S <- factor(bdataT2correctRatio$S, levels=levels(ordered(dataT2correctRatio$S)), ordered=TRUE)
     }
-    
+
     if (Sbterm=="ordered(Sb)"){
       bdataT2correctRatio$Sb <- factor(bdataT2correctRatio$Sb, levels=levels(ordered(dataT2correctRatio$Sb)), ordered=TRUE)
     }
@@ -485,8 +485,8 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' Estimates \eqn{P\{Y(z)=1|S(1)=s_1\}}, \eqn{z=0,1}, on a grid of \eqn{s_1} values following the estimation method of Juraska, Huang, and Gilbert (2018), where \eqn{Z} is the
 #' treatment group indicator (\eqn{Z=1}, treatment; \eqn{Z=0}, placebo), \eqn{S(z)} is a continuous or ordered categorical univariate biomarker under assignment to \eqn{Z=z}
 #' measured at fixed time \eqn{t_0} after randomization, and \eqn{Y} is a binary clinical endpoint (\eqn{Y=1}, disease; \eqn{Y=0}, no disease) measured after \eqn{t_0}. The
-#' estimator employs the generalized product kernel density/probability estimation method of Hall, Racine, and Li (2004) implemented in the \code{np} package. The risks 
-#' \eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where \eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression 
+#' estimator employs the generalized product kernel density/probability estimation method of Hall, Racine, and Li (2004) implemented in the \code{np} package. The risks
+#' \eqn{P\{Y(z)=1|S(z)=s_1,X=x\}}, \eqn{z=0,1}, where \eqn{X} is a vector of discrete baseline covariates, are estimated by fitting inverse probability-weighted logistic regression
 #' models using the \code{osDesign} package.
 #'
 #' @param formula a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
@@ -502,7 +502,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' kernel density/probability estimation
 #' @param bwtype a character string specifying the bandwidth type for continuous variables in the kernel density estimation. The options are \code{fixed} (default) for fixed
 #' bandwidths, \code{generalized_nn} for generalized nearest neighbors, and \code{adaptive_nn} for adaptive nearest neighbors. As noted in the documentation of the function
-#' \code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}. 
+#' \code{npcdensbw} in the \code{np} package: "Adaptive nearest-neighbor bandwidths change with each sample realization in the set when estimating the density at the point \eqn{x}.
 #' Generalized nearest-neighbor bandwidths change with the point at which the density is estimated, \eqn{x}. Fixed bandwidths are constant over the support of \eqn{x}."
 #' @param hinge a logical value (\code{FALSE} by default) indicating whether a hinge model (Fong et al., 2017) shall be used for modeling the effect of \eqn{S(z)} on the
 #' clinical endpoint risk. A hinge model specifies that variability in \eqn{S(z)} below the hinge point does not associate with the clinical endpoint risk.
@@ -567,12 +567,12 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #'
 #' @seealso \code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
-riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"), 
+riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"),
                       hinge=FALSE, weights=NULL, biomarkerGrid=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
-  
+
   pstype <- match.arg(pstype)
   bsmtype <- match.arg(bsmtype)
   bwtype <- match.arg(bwtype)
@@ -610,7 +610,7 @@ riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"),
 
   # standardize the variable name for the binary clinical endpoint measured after t0
   colnames(data)[colnames(data)==formulaDecomp[[1]]] <- "Y"
-  
+
   # extract the subset with available phase 2 data (i.e., with measured S)
   data2 <- subset(data, !is.na(S))
 
@@ -644,7 +644,7 @@ riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"),
   if (pstype=="ordered"){ Sterm <- "ordered(S)"}
   Sbterm <- "Sb"
   if (bsmtype=="ordered"){ Sbterm <- "ordered(Sb)"}
-  
+
   if (anyBaselineCovar){
     fm.fbw <- as.formula(paste0(Sterm," ~ ",paste(c(Sbterm,formulaDecomp[[2]][-1]),collapse="+")))
     fm.gbw <- as.formula(paste0(Sterm," ~ ",paste(formulaDecomp[[2]][-1],collapse="+")))
@@ -703,7 +703,7 @@ riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"),
     }
     fit1 <- tps(fm, data=subset(data2, Z==0 & !is.na(Y)), nn0=nPControls, nn1=nPCases, group=rep(1, NROW(subset(data2, Z==0 & !is.na(Y)))), method="PL", cohort=TRUE)
   }
-  
+
   # kernel density estimator for f(s1|Sb=s0, X=x) using the treatment group in the phase 2 subset
   fhat <- npcdens(fbw)
 
