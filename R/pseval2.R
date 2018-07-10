@@ -13,6 +13,8 @@ NULL
 #' @import MASS
 NULL
 
+globalVariables(c("Z","S","Y"))
+
 logit <- function(p){
   return(log(p/(1-p)))
 }
@@ -128,13 +130,20 @@ riskP <- function(s1, formula, data, pstype, bsmtype, tpsFit, npcdensFit1, npcde
     lev <- drop(Xu[i,])
     names(lev) <- colnames(Xu)
     pX <- propX(X, lev)
-    hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
-    if (inherits(hNumInt, 'try-error')){
-      num <- num + pX*integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
+    # if both 'pstype' and 'bsmtype' are ordered categorical, replace numerical integration with simple summation because 'predict' on objects from 'npudens' and 'npcdens' assigns probability mass to values
+    # other than the discrete values taken on by the categorical variables (consequently, the sum of the probability mass would exceed 1)
+    if (pstype=="ordered" & bsmtype=="ordered"){
+      num <- num + pX*sum(hNum(s0=as.numeric(as.vector(sort(unique(data$S)))), s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2))
+      den <- den + pX*sum(hDen(s0=as.numeric(as.vector(sort(unique(data$S)))), s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2))
     } else {
-      num <- num + pX*hNumInt
+      hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
+      if (inherits(hNumInt, 'try-error')){
+        num <- num + pX*integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
+      } else {
+        num <- num + pX*hNumInt
+      }
+      den <- den + pX*integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
     }
-    den <- den + pX*integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
   }
 
   return(num/den)
@@ -197,7 +206,7 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' @param saveDir a character string specifying a path for the output directory. If \code{NULL} (default), the output list will only be returned; otherwise, if
 #' \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.
 #'
-#' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
+#' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{bList}) is saved as an \code{.RData} file; otherwise it is returned only.
 #' The output object is a list with the following components:
 #' \itemize{
 #' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
@@ -215,7 +224,7 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
-#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 #' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
 #' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 #' X <- rbinom(n,1,0.5)
@@ -232,13 +241,15 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-#' grid <- seq(qS[1], qS[2], length.out=5)
+#' grid <- seq(qS[1], qS[2], length.out=3)
 #'
 #' out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
 #'                      biomarkerGrid=grid, iter=1, seed=10)
+#' \donttest{
 #' # alternatively, to save the .RData output file (no '<-' needed):
-#' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10,
-#'               saveFile="out.RData", saveDir="./")
+#' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+#'               biomarkerGrid=grid, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+#' }
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
@@ -541,7 +552,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
-#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 #' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
 #' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 #' X <- rbinom(n,1,0.5)
@@ -558,12 +569,14 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-#' grid <- seq(qS[1], qS[2], length.out=5)
+#' grid <- seq(qS[1], qS[2], length.out=3)
 #'
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' \donttest{
 #' # alternatively, to save the .RData output file (no '<-' needed):
 #' riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData",
 #'           saveDir="./")
+#' }
 #'
 #' @seealso \code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
@@ -786,7 +799,7 @@ invtContrastRiskCurve <- function(x, contrast){
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
-#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 #' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
 #' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 #' X <- rbinom(n,1,0.5)
@@ -803,7 +816,7 @@ invtContrastRiskCurve <- function(x, contrast){
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-#' grid <- seq(qS[1], qS[2], length.out=5)
+#' grid <- seq(qS[1], qS[2], length.out=2)
 #'
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
 #' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
@@ -890,7 +903,7 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
-#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 #' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
 #' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 #' X <- rbinom(n,1,0.5)
@@ -907,7 +920,8 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-#' grid <- seq(qS[1], qS[2], length.out=5)
+#' grid <- seq(qS[1], qS[2], length.out=3)
+#' \donttest{
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
 #' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
 #'                       biomarkerGrid=grid, iter=2, seed=10)
@@ -917,6 +931,7 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' testConstancy(out, boot, contrast="te", null="H01", overallPlaRisk=prob[1],
 #'               overallTxRisk=prob[2])
 #' testConstancy(out, boot, contrast="te", null="H02", MCEPconstantH02=0, limS1=c(qS[1],1.5))
+#' }
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{testEquality}}
 #' @export
@@ -994,7 +1009,7 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
-#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 #' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
 #' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 #' X <- rbinom(n,1,0.5)
@@ -1011,7 +1026,7 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-#' grid <- seq(qS[1], qS[2], length.out=5)
+#' grid <- seq(qS[1], qS[2], length.out=3)
 #' out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid)
 #' out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid)
 #' boot0 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,],
@@ -1088,7 +1103,7 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' @examples
 #' n <- 500
 #' Z <- rep(0:1, each=n/2)
-#' S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+#' S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 #' p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) %*% c(-1.2,0.2,-0.02,-0.2)))
 #' Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 #' X <- rbinom(n,1,0.5)
@@ -1097,7 +1112,7 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' # delete S(0) in treatment recipients
 #' S[Z==1,2] <- NA
 #' # generate the indicator of being sampled into the phase 2 subset
-#' phase2 <- rbinom(n,1,0.4)
+#' phase2 <- rbinom(n,1,0.3)
 #' # delete Sb, S(0) and S(1) in controls not included in the phase 2 subset
 #' S[Y==0 & phase2==0,] <- c(NA,NA,NA)
 #' # delete Sb in cases not included in the phase 2 subset
@@ -1105,13 +1120,14 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-#' grid <- seq(qS[1], qS[2], length.out=5)
-#'
+#' grid <- seq(qS[1], qS[2], length.out=3)
+#' \donttest{
 #' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
 #' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
 #'                       biomarkerGrid=grid, iter=2, seed=10)
 #' sout <- summary(out, boot, contrast="te")
 #' plotMCEPcurve(sout)
+#' }
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{summary.riskCurve}}
 #' @export
@@ -1171,7 +1187,7 @@ npcdensbw.formula <- function (formula, data, subset, na.action, call, ...){
   mf[["formula"]] = eval(mf[[m[1]]], parent.frame())
   #}
   # end of patch
-  variableNames <- np:::explodeFormula(mf[["formula"]])
+  variableNames <- explodeFormula(mf[["formula"]])
   varsPlus <- lapply(variableNames, paste, collapse = " + ")
   mf[["formula"]] <- as.formula(paste(" ~ ", varsPlus[[1]],
                                       " + ", varsPlus[[2]]), env = environment(formula))
@@ -1205,4 +1221,12 @@ npcdensbw.formula <- function (formula, data, subset, na.action, call, ...){
   tbw$terms <- attr(mf, "terms")
   tbw$variableNames <- variableNames
   tbw
+}
+
+explodeFormula <- function (formula){
+  res <- strsplit(strsplit(paste(deparse(formula), collapse = ""),
+                           " *[~] *")[[1]], " *[+] *")
+  stopifnot(all(sapply(res, length) > 0))
+  names(res) <- c("response", "terms")
+  res
 }

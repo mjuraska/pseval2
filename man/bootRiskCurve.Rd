@@ -57,7 +57,7 @@ a grid of values spanning the range of observed values of the biomarker will be 
 \code{saveFile} is specified, the output list will also be saved as an \code{.RData} file in the specified directory.}
 }
 \value{
-If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
+If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{bList}) is saved as an \code{.RData} file; otherwise it is returned only.
 The output object is a list with the following components:
 \itemize{
 \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
@@ -78,7 +78,7 @@ with available phase 2 data varies across bootstrap samples.
 \examples{
 n <- 500
 Z <- rep(0:1, each=n/2)
-S <- mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
+S <- MASS::mvrnorm(n, mu=c(2,2,3), Sigma=matrix(c(1,0.9,0.7,0.9,1,0.7,0.7,0.7,1), nrow=3))
 p <- pnorm(drop(cbind(1,Z,(1-Z)*S[,2],Z*S[,3]) \%*\% c(-1.2,0.2,-0.02,-0.2)))
 Y <- sapply(p, function(risk){ rbinom(1,1,risk) })
 X <- rbinom(n,1,0.5)
@@ -95,13 +95,15 @@ S[Y==1 & phase2==0,1] <- NA
 data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
-grid <- seq(qS[1], qS[2], length.out=5)
+grid <- seq(qS[1], qS[2], length.out=3)
 
 out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
                      biomarkerGrid=grid, iter=1, seed=10)
+\donttest{
 # alternatively, to save the .RData output file (no '<-' needed):
-bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, iter=1, seed=10,
-              saveFile="out.RData", saveDir="./")
+bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
+              biomarkerGrid=grid, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+}
 
 }
 \references{
