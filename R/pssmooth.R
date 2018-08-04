@@ -138,11 +138,19 @@ riskP <- function(s1, formula, data, pstype, bsmtype, tpsFit, npcdensFit1, npcde
     } else {
       hNumInt <- try(integrate(hNum, 0, Inf, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
       if (inherits(hNumInt, 'try-error')){
-        num <- num + pX*integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value
-      } else {
-        num <- num + pX*hNumInt
+        hNumInt <- try(integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
+        
+        if (inherits(hNumInt, 'try-error')){
+          hNumInt <- integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
+        }
       }
-      den <- den + pX*integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
+      num <- num + pX*hNumInt
+      
+      hDenInt <- try(integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value, silent=TRUE)
+      if (inherits(hNumInt, 'try-error')){
+        hDenInt <- try(integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=300*.Machine$double.eps^0.25)$value, silent=TRUE)
+      }
+      den <- den + pX*hDenInt
     }
   }
 
@@ -198,7 +206,7 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' the case:control ratio in the phase 2 subset is different from that in the target population and are passed on to GLMs in the estimation of the hinge point.
 #' If \code{NULL} (default and recommended), weights for cases and controls are recalculated separately in each study group \emph{within each bootstrap sample}; otherwise the
 #' same specified vector of weights is used in each bootstrap sample.
-#' @param biomarkerGrid a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
+#' @param psGrid a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
 #' a grid of values spanning the range of observed values of the biomarker will be used.
 #' @param iter the number of bootstrap iterations
 #' @param seed a seed of the random number generator supplied to \code{set.seed} for reproducibility
@@ -209,11 +217,11 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{bList}) is saved as an \code{.RData} file; otherwise it is returned only.
 #' The output object is a list with the following components:
 #' \itemize{
-#' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
+#' \item \code{psGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
 #' \code{txRiskCurveBoot}
-#' \item \code{plaRiskCurveBoot}: a \code{length(biomarkerGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid},
+#' \item \code{plaRiskCurveBoot}: a \code{length(psGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid},
 #' with columns representing bootstrap samples
-#' \item \code{txRiskCurveBoot}: a \code{length(biomarkerGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid},
+#' \item \code{txRiskCurveBoot}: a \code{length(psGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid},
 #' with columns representing bootstrap samples
 #' \item \code{cpointPboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the placebo group in each bootstrap sample
 #' \item \code{cpointTboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the treatment group in each bootstrap sample
@@ -244,17 +252,17 @@ risk <- function(s1, formula, data, data2, pstype, bsmtype, tpsFit, npcdensFit1,
 #' grid <- seq(qS[1], qS[2], length.out=3)
 #'
 #' out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-#'                      biomarkerGrid=grid, iter=1, seed=10)
+#'                      psGrid=grid, iter=1, seed=10)
 #' \donttest{
 #' # alternatively, to save the .RData output file (no '<-' needed):
 #' bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-#'               biomarkerGrid=grid, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+#'               psGrid=grid, iter=1, seed=10, saveFile="out.RData", saveDir="./")
 #' }
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
 bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"),
-                          hinge=FALSE, weights=NULL, biomarkerGrid=NULL, iter, seed=NULL, saveFile=NULL, saveDir=NULL){
+                          hinge=FALSE, weights=NULL, psGrid=NULL, iter, seed=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
@@ -342,8 +350,8 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
   bSampleCases <- matrix(sample(1:nCases, nCases*iter, replace=TRUE), nrow=nCases, ncol=iter)
 
   # a grid of values of S on which the bootstrapped risk curves are returned
-  if (is.null(biomarkerGrid)){
-    biomarkerGrid <- seq(min(data2$S), max(data2$S), length.out=200)
+  if (is.null(psGrid)){
+    psGrid <- seq(min(data2$S), max(data2$S), length.out=200)
   }
   rm(data2)
 
@@ -458,7 +466,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
     } else {
       fm <- ~ 1
     }
-    curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, bdata, bdata2, pstype, bsmtype, fit1, fhat, ghat, cpoint) })
+    curves <- lapply(psGrid, function(s){ risk(s, fm, bdata, bdata2, pstype, bsmtype, fit1, fhat, ghat, cpoint) })
     plaRiskCurve <- sapply(curves, "[[", "plaRisk")
     txRiskCurve <- sapply(curves, "[[", "txRisk")
 
@@ -477,7 +485,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
   txRiskCurveBoot <- sapply(bRiskCurveList,"[[","txRiskCurve")
 
   # the output list
-  bList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurveBoot=plaRiskCurveBoot, txRiskCurveBoot=txRiskCurveBoot)
+  bList <- list(psGrid=psGrid, plaRiskCurveBoot=plaRiskCurveBoot, txRiskCurveBoot=txRiskCurveBoot)
   if (hinge){
     bList$cpointPboot <- sapply(bRiskCurveList,"[[","cpointP")
     bList$cpointTboot <- sapply(bRiskCurveList,"[[","cpointT")
@@ -521,7 +529,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' in the phase 2 subset in order to make inference about the target population of all randomized participants endpoint-free at \eqn{t_0}. The weights reflect that
 #' the case:control ratio in the phase 2 subset is different from that in the target population and are passed on to GLMs in the estimation of the hinge point.
 #' If \code{NULL} (default), weights for cases and controls are calculated separately in each study group.
-#' @param biomarkerGrid a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
+#' @param psGrid a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
 #' a grid of values spanning the range of observed values of the biomarker will be used.
 #' @param saveFile a character string specifying the name of an \code{.RData} file storing the output list. If \code{NULL} (default), the output list will only be returned.
 #' @param saveDir a character string specifying a path for the output directory. If \code{NULL} (default), the output list will only be returned; otherwise, if
@@ -530,10 +538,10 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' @return If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
 #' The output object (of class \code{riskCurve}) is a list with the following components:
 #' \itemize{
-#' \item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
+#' \item \code{psGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
 #' \code{txRiskCurve}
-#' \item \code{plaRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
-#' \item \code{txRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
+#' \item \code{plaRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid}
+#' \item \code{txRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid}
 #' \item \code{fOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} containing the optimal bandwidths, selected by likelihood
 #' cross-validation, in the kernel estimation of the conditional density of \eqn{S(1)} given the baseline surrogate measure and any other specified baseline covariates
 #' \item \code{gOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} or \code{npudensbw} containing the optimal bandwidths,
@@ -571,7 +579,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=3)
 #'
-#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, psGrid=grid)
 #' \donttest{
 #' # alternatively, to save the .RData output file (no '<-' needed):
 #' riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData",
@@ -581,7 +589,7 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
 #' @seealso \code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}
 #' @export
 riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"), bsmtype=c("continuous", "ordered"), bwtype=c("fixed", "generalized_nn", "adaptive_nn"),
-                      hinge=FALSE, weights=NULL, biomarkerGrid=NULL, saveFile=NULL, saveDir=NULL){
+                      hinge=FALSE, weights=NULL, psGrid=NULL, saveFile=NULL, saveDir=NULL){
   if (missing(bsm)){ stop("The variable name in argument 'bsm' for the baseline surrogate measure is missing.") }
   if (missing(tx)){ stop("The variable name in argument 'tx' for the treatment group indicator is missing.") }
   if (missing(data)){ stop("The data frame 'data' for interpreting the variables in 'formula' is missing.") }
@@ -728,8 +736,8 @@ riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"),
   }
 
   # a grid of values of S on which the estimated risk curves are returned
-  if (is.null(biomarkerGrid)){
-    biomarkerGrid <- seq(min(data2$S), max(data2$S), length.out=200)
+  if (is.null(psGrid)){
+    psGrid <- seq(min(data2$S), max(data2$S), length.out=200)
   }
 
   # the first argument of 'risk' is a scalar
@@ -738,12 +746,12 @@ riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"),
   } else {
     fm <- ~ 1
   }
-  curves <- lapply(biomarkerGrid, function(s){ risk(s, fm, data, data2, pstype, bsmtype, fit1, fhat, ghat, cpoint) })
+  curves <- lapply(psGrid, function(s){ risk(s, fm, data, data2, pstype, bsmtype, fit1, fhat, ghat, cpoint) })
   plaRiskCurve <- sapply(curves, "[[", "plaRisk")
   txRiskCurve <- sapply(curves, "[[", "txRisk")
 
   # the output list
-  oList <- list(biomarkerGrid=biomarkerGrid, plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve, fOptBandwidths=fbw, gOptBandwidths=gbw)
+  oList <- list(psGrid=psGrid, plaRiskCurve=plaRiskCurve, txRiskCurve=txRiskCurve, fOptBandwidths=fbw, gOptBandwidths=gbw)
   if (hinge){
     oList$cpointP <- cpointP
     oList$cpointT <- cpointT
@@ -817,9 +825,9 @@ invtContrastRiskCurve <- function(x, contrast){
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=2)
 #'
-#' out <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' out <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data, psGrid=grid)
 #' boot <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data,
-#'                       biomarkerGrid=grid, iter=2, seed=10)
+#'                       psGrid=grid, iter=2, seed=10)
 #' summary(out, boot, contrast="te")
 #'
 #' @seealso \code{\link{riskCurve}} and \code{\link{bootRiskCurve}}
@@ -829,8 +837,8 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 
   # point estimates of mCEP(s1)
   MCEP <- contrastRiskCurve(object, contrast)
-  out <- data.frame(object$biomarkerGrid, MCEP)
-  colnames(out) <- c("biomarkerGrid", contrast)
+  out <- data.frame(object$psGrid, MCEP)
+  colnames(out) <- c("psGrid", contrast)
 
   # interval estimates of mCEP(s1)
   if(!is.null(boot)){
@@ -921,9 +929,9 @@ summary.riskCurve <- function(object, boot=NULL, contrast=c("te", "rr", "logrr",
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=3)
 #' \donttest{
-#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, psGrid=grid)
 #' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-#'                       biomarkerGrid=grid, iter=2, seed=10)
+#'                       psGrid=grid, iter=2, seed=10)
 #' fit <- glm(Y ~ Z, data=data, family=binomial)
 #' prob <- predict(fit, newdata=data.frame(Z=0:1), type="response")
 #'
@@ -947,10 +955,10 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 
     # trim the risk curves if 'limS1' is specified
     if (!is.null(limS1)){
-      object$plaRiskCurve <- object$plaRiskCurve[object$biomarkerGrid>=limS1[1] & object$biomarkerGrid<=limS1[2]]
-      object$txRiskCurve <- object$txRiskCurve[object$biomarkerGrid>=limS1[1] & object$biomarkerGrid<=limS1[2]]
-      boot$plaRiskCurveBoot <- boot$plaRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],,drop=FALSE]
-      boot$txRiskCurveBoot <- boot$txRiskCurveBoot[boot$biomarkerGrid>=limS1[1] & boot$biomarkerGrid<=limS1[2],,drop=FALSE]
+      object$plaRiskCurve <- object$plaRiskCurve[object$psGrid>=limS1[1] & object$psGrid<=limS1[2]]
+      object$txRiskCurve <- object$txRiskCurve[object$psGrid>=limS1[1] & object$psGrid<=limS1[2]]
+      boot$plaRiskCurveBoot <- boot$plaRiskCurveBoot[boot$psGrid>=limS1[1] & boot$psGrid<=limS1[2],,drop=FALSE]
+      boot$txRiskCurveBoot <- boot$txRiskCurveBoot[boot$psGrid>=limS1[1] & boot$psGrid<=limS1[2],,drop=FALSE]
     }
   }
 
@@ -1026,12 +1034,12 @@ testConstancy <- function(object, boot, contrast=c("te", "rr", "logrr", "rd"), n
 #' colnames(data) <- c("X","Z","Sb","S","Y")
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=3)
-#' out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid)
-#' out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid)
+#' out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], psGrid=grid)
+#' out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], psGrid=grid)
 #' boot0 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,],
-#'                        biomarkerGrid=grid, iter=2, seed=10)
+#'                        psGrid=grid, iter=2, seed=10)
 #' boot1 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,],
-#'                        biomarkerGrid=grid, iter=2, seed=15)
+#'                        psGrid=grid, iter=2, seed=15)
 #'
 #' testEquality(out0, out1, boot0, boot1, contrast="te", null="H04")
 #'
@@ -1041,20 +1049,20 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
   contrast <- match.arg(contrast)
   null <- match.arg(null)
 
-  if (!setequal(object1$biomarkerGrid, object2$biomarkerGrid)){ stop("The estimated risk curves in 'object1' and 'object2' must be evaluated on the same grid of biomarker values.") }
-  if (!setequal(boot1$biomarkerGrid, boot2$biomarkerGrid)){ stop("The bootstrapped risk curves in 'boot1' and 'boot2' must be evaluated on the same grid of biomarker values.") }
+  if (!setequal(object1$psGrid, object2$psGrid)){ stop("The estimated risk curves in 'object1' and 'object2' must be evaluated on the same grid of biomarker values.") }
+  if (!setequal(boot1$psGrid, boot2$psGrid)){ stop("The bootstrapped risk curves in 'boot1' and 'boot2' must be evaluated on the same grid of biomarker values.") }
 
   # trim the risk curves if 'limS1' is specified
   if (!is.null(limS1)){
-    object1$plaRiskCurve <- object1$plaRiskCurve[object1$biomarkerGrid>=limS1[1] & object1$biomarkerGrid<=limS1[2]]
-    object1$txRiskCurve <- object1$txRiskCurve[object1$biomarkerGrid>=limS1[1] & object1$biomarkerGrid<=limS1[2]]
-    object2$plaRiskCurve <- object2$plaRiskCurve[object2$biomarkerGrid>=limS1[1] & object2$biomarkerGrid<=limS1[2]]
-    object2$txRiskCurve <- object2$txRiskCurve[object2$biomarkerGrid>=limS1[1] & object2$biomarkerGrid<=limS1[2]]
+    object1$plaRiskCurve <- object1$plaRiskCurve[object1$psGrid>=limS1[1] & object1$psGrid<=limS1[2]]
+    object1$txRiskCurve <- object1$txRiskCurve[object1$psGrid>=limS1[1] & object1$psGrid<=limS1[2]]
+    object2$plaRiskCurve <- object2$plaRiskCurve[object2$psGrid>=limS1[1] & object2$psGrid<=limS1[2]]
+    object2$txRiskCurve <- object2$txRiskCurve[object2$psGrid>=limS1[1] & object2$psGrid<=limS1[2]]
 
-    boot1$plaRiskCurveBoot <- boot1$plaRiskCurveBoot[boot1$biomarkerGrid>=limS1[1] & boot1$biomarkerGrid<=limS1[2],,drop=FALSE]
-    boot1$txRiskCurveBoot <- boot1$txRiskCurveBoot[boot1$biomarkerGrid>=limS1[1] & boot1$biomarkerGrid<=limS1[2],,drop=FALSE]
-    boot2$plaRiskCurveBoot <- boot2$plaRiskCurveBoot[boot2$biomarkerGrid>=limS1[1] & boot2$biomarkerGrid<=limS1[2],,drop=FALSE]
-    boot2$txRiskCurveBoot <- boot2$txRiskCurveBoot[boot2$biomarkerGrid>=limS1[1] & boot2$biomarkerGrid<=limS1[2],,drop=FALSE]
+    boot1$plaRiskCurveBoot <- boot1$plaRiskCurveBoot[boot1$psGrid>=limS1[1] & boot1$psGrid<=limS1[2],,drop=FALSE]
+    boot1$txRiskCurveBoot <- boot1$txRiskCurveBoot[boot1$psGrid>=limS1[1] & boot1$psGrid<=limS1[2],,drop=FALSE]
+    boot2$plaRiskCurveBoot <- boot2$plaRiskCurveBoot[boot2$psGrid>=limS1[1] & boot2$psGrid<=limS1[2],,drop=FALSE]
+    boot2$txRiskCurveBoot <- boot2$txRiskCurveBoot[boot2$psGrid>=limS1[1] & boot2$psGrid<=limS1[2],,drop=FALSE]
   }
 
   # transformed estimated mCEP curves
@@ -1096,6 +1104,7 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' @param confLevel the confidence level (0.95 by default) of pointwise and simultaneous confidence intervals
 #' @param hingePoint the hinge point estimate (\code{NULL} by default)
 #' @param xLab a character string specifying the x-axis label (\code{NULL} by default)
+#' @param yLab a character string specifying the y-axis label (\code{NULL} by default)
 #'
 #' @return None. The function is called solely for plot generation.
 #'
@@ -1121,16 +1130,16 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 #' grid <- seq(qS[1], qS[2], length.out=3)
 #' \donttest{
-#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+#' out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, psGrid=grid)
 #' boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-#'                       biomarkerGrid=grid, iter=2, seed=10)
+#'                       psGrid=grid, iter=2, seed=10)
 #' sout <- summary(out, boot, contrast="te")
 #' plotMCEPcurve(sout)
 #' }
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{summary.riskCurve}}
 #' @export
-plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, xLab=NULL){
+plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, xLab=NULL, yLab=NULL){
   cexTitle <- 1.7
   cexLab <- 1.4
   cexAxis <- 1.3
@@ -1138,7 +1147,7 @@ plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, xLab=NULL){
 
   yLim <- range(object[,-1], na.rm=TRUE)
   if (is.null(xLab)){ xLab <- expression(paste("Biomarker Response at ",t[0])) }
-  yLab <- switch(colnames(object)[2], te="Treatment Efficacy", rr="Relative Risk", logrr="Log Relative Risk", rd="Risk Difference (Pla - Tx)")
+  if (is.null(yLab)){ yLab <- switch(colnames(object)[2], te="Treatment Efficacy", rr="Relative Risk", logrr="Log Relative Risk", rd="Risk Difference (Pla - Tx)") }
 
   par(mar=c(5,5,1,1), cex.lab=cexLab, cex.axis=cexAxis, las=1)
 
@@ -1153,10 +1162,11 @@ plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, xLab=NULL){
     lines(object[,1], object$ptUB, lty="dashed", lwd=3)
     lines(object[,1], object$smLB, lty="dotdash", lwd=3)
     lines(object[,1], object$smUB, lty="dotdash", lwd=3)
+    
+    legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c(paste0("Pointwise ",confLevel*100,"% CI"), paste0("Simultaneous ",confLevel*100,"% CI")),
+           cex=cexLegend, bty="n")
   }
-
-  legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c(paste0("Pointwise ",confLevel*100,"% CI"), paste0("Simultaneous ",confLevel*100,"% CI")),
-         cex=cexLegend, bty="n")
+  
   if (!is.null(hingePoint)){ legend("bottomright", paste0("Hinge Point = ", round(hingePoint,2),"  "), cex=cexLegend, bty="n") }
 }
 
