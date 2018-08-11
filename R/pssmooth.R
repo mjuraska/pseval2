@@ -141,16 +141,26 @@ riskP <- function(s1, formula, data, pstype, bsmtype, tpsFit, npcdensFit1, npcde
         hNumInt <- try(integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000)$value, silent=TRUE)
         
         if (inherits(hNumInt, 'try-error')){
-          hNumInt <- integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value
+          hNumInt <- try(integrate(hNum, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, tpsFit=tpsFit, changePoint=changePoint, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value, silent=TRUE)
         }
       }
-      num <- num + pX*hNumInt
+      
+      if (inherits(hNumInt, 'try-error')){
+        return(NA)
+      } else {
+        num <- num + pX*hNumInt  
+      }
       
       hDenInt <- try(integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=30*.Machine$double.eps^0.25)$value, silent=TRUE)
-      if (inherits(hNumInt, 'try-error')){
-        hDenInt <- try(integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=300*.Machine$double.eps^0.25)$value, silent=TRUE)
+      if (inherits(hDenInt, 'try-error')){
+        hDenInt <- try(integrate(hDen, 0, UL, s1=s1, lev=lev, vars=vars, data=data, pstype=pstype, bsmtype=bsmtype, npcdensFit1=npcdensFit1, npcdensFit2=npcdensFit2, subdivisions=2000, rel.tol=.Machine$double.eps^0.05)$value, silent=TRUE)
       }
-      den <- den + pX*hDenInt
+      
+      if (inherits(hDenInt, 'try-error')){
+        return(NA)
+      } else {
+        den <- den + pX*hDenInt  
+      }
     }
   }
 
@@ -1103,8 +1113,11 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #' @param object an object returned by \code{\link{summary.riskCurve}}
 #' @param confLevel the confidence level (0.95 by default) of pointwise and simultaneous confidence intervals
 #' @param hingePoint the hinge point estimate (\code{NULL} by default)
+#' @param title a character string specifying the plot title
 #' @param xLab a character string specifying the x-axis label (\code{NULL} by default)
 #' @param yLab a character string specifying the y-axis label (\code{NULL} by default)
+#' @param yLim a numeric vector of length 2 specifying the y-axis range (\code{NULL} by default)
+#' @param pType a character string specifying the type of plot. Possible options are \code{"l"} for lines (default) and \code{"p"} for points.
 #'
 #' @return None. The function is called solely for plot generation.
 #'
@@ -1139,32 +1152,53 @@ testEquality <- function(object1, object2, boot1, boot2, contrast=c("te", "rr", 
 #'
 #' @seealso \code{\link{riskCurve}}, \code{\link{bootRiskCurve}} and \code{\link{summary.riskCurve}}
 #' @export
-plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, xLab=NULL, yLab=NULL){
-  cexTitle <- 1.7
+plotMCEPcurve <- function(object, confLevel=0.95, hingePoint=NULL, title=NULL, xLab=NULL, yLab=NULL, yLim=NULL, pType=c("l","p")){
+  pType <- match.arg(pType)
+  
+  cexTitle <- 1.6
   cexLab <- 1.4
   cexAxis <- 1.3
   cexLegend <- 1.2
 
-  yLim <- range(object[,-1], na.rm=TRUE)
+  if (is.null(yLim)){ 
+    yLim <- range(object[,-1], na.rm=TRUE) 
+    yLim <- c(yLim[1]-0.1*(yLim[2]-yLim[1]), yLim[2])
+  }
   if (is.null(xLab)){ xLab <- expression(paste("Biomarker Response at ",t[0])) }
   if (is.null(yLab)){ yLab <- switch(colnames(object)[2], te="Treatment Efficacy", rr="Relative Risk", logrr="Log Relative Risk", rd="Risk Difference (Pla - Tx)") }
 
-  par(mar=c(5,5,1,1), cex.lab=cexLab, cex.axis=cexAxis, las=1)
+  par(mar=c(5,5,2,1), cex.lab=cexLab, cex.axis=cexAxis, las=1)
 
-  plot(object[,1], object[,2], type="n", ylim=c(yLim[1]-0.1*(yLim[2]-yLim[1]), yLim[2]), xlab=xLab, ylab=yLab)
+  plot(object[,1], object[,2], type="n", ylim=yLim, xlab=xLab, ylab=yLab)
+  if (!is.null(title)){ mtext(title, side=3, line=0.5, cex=cexTitle) }
   abline(h=ifelse(colnames(object)[2]=="rr", 1, 0), lty="dotted", lwd=2, col="gray50")
 
-  lines(object[,1], object[,2], lwd=3.5)
-
-  # if interval estimates are available in the data frame
-  if (NCOL(object) > 2){
-    lines(object[,1], object$ptLB, lty="dashed", lwd=3)
-    lines(object[,1], object$ptUB, lty="dashed", lwd=3)
-    lines(object[,1], object$smLB, lty="dotdash", lwd=3)
-    lines(object[,1], object$smUB, lty="dotdash", lwd=3)
+  if (pType=="l"){
+    lines(object[,1], object[,2], lwd=3.5)
     
-    legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c(paste0("Pointwise ",confLevel*100,"% CI"), paste0("Simultaneous ",confLevel*100,"% CI")),
-           cex=cexLegend, bty="n")
+    # if interval estimates are available in the data frame
+    if (NCOL(object) > 2){
+      lines(object[,1], object$ptLB, lty="dashed", lwd=3)
+      lines(object[,1], object$ptUB, lty="dashed", lwd=3)
+      lines(object[,1], object$smLB, lty="dotdash", lwd=3)
+      lines(object[,1], object$smUB, lty="dotdash", lwd=3)
+      
+      legend("bottomleft", lty=c("dashed","dotdash"), lwd=3, legend=c(paste0("Pointwise ",confLevel*100,"% CI"), paste0("Simultaneous ",confLevel*100,"% CI")),
+             cex=cexLegend, bty="n")
+    }
+  } else {
+    points(object[,1], object[,2], lwd=3.5, pch=16, cex=1.6)
+    
+    # if interval estimates are available in the data frame
+    if (NCOL(object) > 2){
+      points(object[,1], object$ptLB, lty="dashed", lwd=3, pch=1)
+      points(object[,1], object$ptUB, lty="dashed", lwd=3, pch=1)
+      points(object[,1], object$smLB, lty="dotdash", lwd=3, pch=4)
+      points(object[,1], object$smUB, lty="dotdash", lwd=3, pch=4)
+      
+      legend("bottomleft", pch=c(1,4), legend=c(paste0("Pointwise ",confLevel*100,"% CI"), paste0("Simultaneous ",confLevel*100,"% CI")),
+             cex=cexLegend, bty="n")
+    }
   }
   
   if (!is.null(hingePoint)){ legend("bottomright", paste0("Hinge Point = ", round(hingePoint,2),"  "), cex=cexLegend, bty="n") }
