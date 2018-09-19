@@ -4,7 +4,8 @@
 \alias{plotMCEPcurve}
 \title{Plotting of the Estimated Marginal Causal Effect Predictiveness Curve}
 \usage{
-plotMCEPcurve(object, confLevel = 0.95, hingePoint = NULL, xLab = NULL)
+plotMCEPcurve(object, confLevel = 0.95, hingePoint = NULL, title = NULL,
+  xLab = NULL, yLab = NULL, yLim = NULL, pType = c("l", "p"))
 }
 \arguments{
 \item{object}{an object returned by \code{\link{summary.riskCurve}}}
@@ -13,7 +14,15 @@ plotMCEPcurve(object, confLevel = 0.95, hingePoint = NULL, xLab = NULL)
 
 \item{hingePoint}{the hinge point estimate (\code{NULL} by default)}
 
+\item{title}{a character string specifying the plot title}
+
 \item{xLab}{a character string specifying the x-axis label (\code{NULL} by default)}
+
+\item{yLab}{a character string specifying the y-axis label (\code{NULL} by default)}
+
+\item{yLim}{a numeric vector of length 2 specifying the y-axis range (\code{NULL} by default)}
+
+\item{pType}{a character string specifying the type of plot. Possible options are \code{"l"} for lines (default) and \code{"p"} for points.}
 }
 \value{
 None. The function is called solely for plot generation.
@@ -44,9 +53,9 @@ colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=3)
 \donttest{
-out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, psGrid=grid)
 boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-                      biomarkerGrid=grid, iter=2, seed=10)
+                      psGrid=grid, iter=2, seed=10)
 sout <- summary(out, boot, contrast="te")
 plotMCEPcurve(sout)
 }

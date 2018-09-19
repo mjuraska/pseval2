@@ -57,9 +57,9 @@ colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=3)
 \donttest{
-out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, psGrid=grid)
 boot <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-                      biomarkerGrid=grid, iter=2, seed=10)
+                      psGrid=grid, iter=2, seed=10)
 fit <- glm(Y ~ Z, data=data, family=binomial)
 prob <- predict(fit, newdata=data.frame(Z=0:1), type="response")
 

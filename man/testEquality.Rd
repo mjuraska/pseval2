@@ -54,12 +54,12 @@ data <- data.frame(X,Z,S[,1],ifelse(Z==0,S[,2],S[,3]),Y)
 colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=3)
-out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], biomarkerGrid=grid)
-out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], biomarkerGrid=grid)
+out0 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,], psGrid=grid)
+out1 <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,], psGrid=grid)
 boot0 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==0,],
-                       biomarkerGrid=grid, iter=2, seed=10)
+                       psGrid=grid, iter=2, seed=10)
 boot1 <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data[data$X==1,],
-                       biomarkerGrid=grid, iter=2, seed=15)
+                       psGrid=grid, iter=2, seed=15)
 
 testEquality(out0, out1, boot0, boot1, contrast="te", null="H04")
 

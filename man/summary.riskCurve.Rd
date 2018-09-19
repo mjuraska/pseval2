@@ -47,9 +47,9 @@ colnames(data) <- c("Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=2)
 
-out <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+out <- riskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data, psGrid=grid)
 boot <- bootRiskCurve(formula=Y ~ S, bsm="Sb", tx="Z", data=data,
-                      biomarkerGrid=grid, iter=2, seed=10)
+                      psGrid=grid, iter=2, seed=10)
 summary(out, boot, contrast="te")
 
 }

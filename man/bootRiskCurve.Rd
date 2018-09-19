@@ -8,8 +8,7 @@ Three-Phase Sampling Design}
 bootRiskCurve(formula, bsm, tx, data, pstype = c("continuous", "ordered"),
   bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
   "generalized_nn", "adaptive_nn"), hinge = FALSE, weights = NULL,
-  biomarkerGrid = NULL, iter, seed = NULL, saveFile = NULL,
-  saveDir = NULL)
+  psGrid = NULL, iter, seed = NULL, saveFile = NULL, saveDir = NULL)
 }
 \arguments{
 \item{formula}{a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
@@ -44,7 +43,7 @@ the case:control ratio in the phase 2 subset is different from that in the targe
 If \code{NULL} (default and recommended), weights for cases and controls are recalculated separately in each study group \emph{within each bootstrap sample}; otherwise the
 same specified vector of weights is used in each bootstrap sample.}
 
-\item{biomarkerGrid}{a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
+\item{psGrid}{a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
 a grid of values spanning the range of observed values of the biomarker will be used.}
 
 \item{iter}{the number of bootstrap iterations}
@@ -60,11 +59,11 @@ a grid of values spanning the range of observed values of the biomarker will be 
 If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{bList}) is saved as an \code{.RData} file; otherwise it is returned only.
 The output object is a list with the following components:
 \itemize{
-\item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
+\item \code{psGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurveBoot} and
 \code{txRiskCurveBoot}
-\item \code{plaRiskCurveBoot}: a \code{length(biomarkerGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid},
+\item \code{plaRiskCurveBoot}: a \code{length(psGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid},
 with columns representing bootstrap samples
-\item \code{txRiskCurveBoot}: a \code{length(biomarkerGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid},
+\item \code{txRiskCurveBoot}: a \code{length(psGrid)}-by-\code{iter} matrix of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid},
 with columns representing bootstrap samples
 \item \code{cpointPboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the placebo group in each bootstrap sample
 \item \code{cpointTboot}: if \code{hinge=TRUE}, a numeric vector of estimates of the hinge point in the treatment group in each bootstrap sample
@@ -98,11 +97,11 @@ qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=3)
 
 out <- bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-                     biomarkerGrid=grid, iter=1, seed=10)
+                     psGrid=grid, iter=1, seed=10)
 \donttest{
 # alternatively, to save the .RData output file (no '<-' needed):
 bootRiskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data,
-              biomarkerGrid=grid, iter=1, seed=10, saveFile="out.RData", saveDir="./")
+              psGrid=grid, iter=1, seed=10, saveFile="out.RData", saveDir="./")
 }
 
 }

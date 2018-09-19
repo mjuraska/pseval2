@@ -7,7 +7,7 @@
 riskCurve(formula, bsm, tx, data, pstype = c("continuous", "ordered"),
   bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
   "generalized_nn", "adaptive_nn"), hinge = FALSE, weights = NULL,
-  biomarkerGrid = NULL, saveFile = NULL, saveDir = NULL)
+  psGrid = NULL, saveFile = NULL, saveDir = NULL)
 }
 \arguments{
 \item{formula}{a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
@@ -40,7 +40,7 @@ in the phase 2 subset in order to make inference about the target population of 
 the case:control ratio in the phase 2 subset is different from that in the target population and are passed on to GLMs in the estimation of the hinge point.
 If \code{NULL} (default), weights for cases and controls are calculated separately in each study group.}
 
-\item{biomarkerGrid}{a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
+\item{psGrid}{a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk in each study group is estimated. If \code{NULL} (default),
 a grid of values spanning the range of observed values of the biomarker will be used.}
 
 \item{saveFile}{a character string specifying the name of an \code{.RData} file storing the output list. If \code{NULL} (default), the output list will only be returned.}
@@ -52,10 +52,10 @@ a grid of values spanning the range of observed values of the biomarker will be 
 If \code{saveFile} and \code{saveDir} are both specified, the output list (named \code{oList}) is saved as an \code{.RData} file; otherwise it is returned only.
 The output object (of class \code{riskCurve}) is a list with the following components:
 \itemize{
-\item \code{biomarkerGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
+\item \code{psGrid}: a numeric vector of \eqn{S(1)} values at which the conditional clinical endpoint risk is estimated in the components \code{plaRiskCurve} and
 \code{txRiskCurve}
-\item \code{plaRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
-\item \code{txRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{biomarkerGrid}
+\item \code{plaRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(0)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid}
+\item \code{txRiskCurve}: a numeric vector of estimates of \eqn{P\{Y(1)=1|S(1)=s_1\}} for \eqn{s_1} in \code{psGrid}
 \item \code{fOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} containing the optimal bandwidths, selected by likelihood
 cross-validation, in the kernel estimation of the conditional density of \eqn{S(1)} given the baseline surrogate measure and any other specified baseline covariates
 \item \code{gOptBandwidths}: a \code{conbandwidth} object returned by the call of the function \code{npcdensbw} or \code{npudensbw} containing the optimal bandwidths,
@@ -95,7 +95,7 @@ colnames(data) <- c("X","Z","Sb","S","Y")
 qS <- quantile(data$S, probs=c(0.05,0.95), na.rm=TRUE)
 grid <- seq(qS[1], qS[2], length.out=3)
 
-out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, biomarkerGrid=grid)
+out <- riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, psGrid=grid)
 \donttest{
 # alternatively, to save the .RData output file (no '<-' needed):
 riskCurve(formula=Y ~ S + factor(X), bsm="Sb", tx="Z", data=data, saveFile="out.RData",
