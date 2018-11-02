@@ -388,8 +388,8 @@ bootRiskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordere
       } else {
         fm <- Y ~ 1
       }
-      cpointP <- chngptm(formula.1=fm, formula.2=~S, data=subset(bdata2, Z==0 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
-      cpointT <- chngptm(formula.1=Y ~ 1, formula.2=~S, data=subset(bdata2, Z==1 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
+      cpointP <- chngptm(formula.1=fm, formula.2=~S, data=subset(bdata2, Z==0 & !is.na(Y)), family="binomial", type="hinge", weights=weights)$coefficients["chngpt"]
+      cpointT <- chngptm(formula.1=Y ~ 1, formula.2=~S, data=subset(bdata2, Z==1 & !is.na(Y)), family="binomial", type="hinge", weights=weights)$coefficients["chngpt"]
       # use their minimum as the hinge point in the below specified GLMs
       cpoint <- min(cpointP, cpointT)
 
@@ -704,8 +704,8 @@ riskCurve <- function(formula, bsm, tx, data, pstype=c("continuous", "ordered"),
     } else {
       fm <- Y ~ 1
     }
-    cpointP <- chngptm(formula.1=fm, formula.2=~S, data=subset(data2, Z==0 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
-    cpointT <- chngptm(formula.1=Y ~ 1, formula.2=~S, data=subset(data2, Z==1 & !is.na(Y)), family="binomial", type="hinge", prob.weights=weights)$coefficients["chngpt"]
+    cpointP <- chngptm(formula.1=fm, formula.2=~S, data=subset(data2, Z==0 & !is.na(Y)), family="binomial", type="hinge", weights=weights)$coefficients["chngpt"]
+    cpointT <- chngptm(formula.1=Y ~ 1, formula.2=~S, data=subset(data2, Z==1 & !is.na(Y)), family="binomial", type="hinge", weights=weights)$coefficients["chngpt"]
     # use their minimum as the hinge point in the below specified GLMs
     cpoint <- min(cpointP, cpointT)
 
