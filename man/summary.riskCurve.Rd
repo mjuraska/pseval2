@@ -4,8 +4,8 @@
 \alias{summary.riskCurve}
 \title{Summary of Point and Interval Estimation of a Marginal Causal Effect Predictiveness Curve}
 \usage{
-\method{summary}{riskCurve}(object, boot = NULL, contrast = c("te", "rr",
-  "logrr", "rd"), confLevel = 0.95, ...)
+\method{summary}{riskCurve}(object, boot = NULL, contrast = c("te",
+  "rr", "logrr", "rd"), confLevel = 0.95, ...)
 }
 \arguments{
 \item{object}{an object of class \code{riskCurve}, typically returned by \code{\link{riskCurve}}}

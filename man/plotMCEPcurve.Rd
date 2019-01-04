@@ -4,8 +4,9 @@
 \alias{plotMCEPcurve}
 \title{Plotting of the Estimated Marginal Causal Effect Predictiveness Curve}
 \usage{
-plotMCEPcurve(object, confLevel = 0.95, hingePoint = NULL, title = NULL,
-  xLab = NULL, yLab = NULL, yLim = NULL, pType = c("l", "p"))
+plotMCEPcurve(object, confLevel = 0.95, hingePoint = NULL,
+  title = NULL, xLab = NULL, yLab = NULL, yLim = NULL,
+  pType = c("l", "p"))
 }
 \arguments{
 \item{object}{an object returned by \code{\link{summary.riskCurve}}}

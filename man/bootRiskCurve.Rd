@@ -5,10 +5,11 @@
 \title{Bootstrap Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure
 Three-Phase Sampling Design}
 \usage{
-bootRiskCurve(formula, bsm, tx, data, pstype = c("continuous", "ordered"),
-  bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
+bootRiskCurve(formula, bsm, tx, data, pstype = c("continuous",
+  "ordered"), bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
   "generalized_nn", "adaptive_nn"), hinge = FALSE, weights = NULL,
-  psGrid = NULL, iter, seed = NULL, saveFile = NULL, saveDir = NULL)
+  psGrid = NULL, iter, seed = NULL, saveFile = NULL,
+  saveDir = NULL)
 }
 \arguments{
 \item{formula}{a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response

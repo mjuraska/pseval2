@@ -4,8 +4,8 @@
 \alias{testEquality}
 \title{Testing of the Null Hypothesis of Equal Marginal Causal Effect Predictiveness Curves for Two Biomarkers, Endpoints, or Baseline Covariate Subgroups}
 \usage{
-testEquality(object1, object2, boot1, boot2, contrast = c("te", "rr", "logrr",
-  "rd"), null = c("H03", "H04"), limS1 = NULL)
+testEquality(object1, object2, boot1, boot2, contrast = c("te", "rr",
+  "logrr", "rd"), null = c("H03", "H04"), limS1 = NULL)
 }
 \arguments{
 \item{object1}{an object returned by \code{\link{riskCurve}} pertaining to either \eqn{mCEP_1(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=0)} in \eqn{H_0^4}}

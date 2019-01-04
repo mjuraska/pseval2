@@ -5,8 +5,8 @@
 \title{Testing of the Null Hypotheses of a Flat and a Constant Marginal Causal Effect Predictiveness Curve}
 \usage{
 testConstancy(object, boot, contrast = c("te", "rr", "logrr", "rd"),
-  null = c("H01", "H02"), overallPlaRisk = NULL, overallTxRisk = NULL,
-  MCEPconstantH02 = NULL, limS1 = NULL)
+  null = c("H01", "H02"), overallPlaRisk = NULL,
+  overallTxRisk = NULL, MCEPconstantH02 = NULL, limS1 = NULL)
 }
 \arguments{
 \item{object}{an object returned by \code{\link{riskCurve}}}
