@@ -108,7 +108,7 @@ Fong, Y., Huang, Y., Gilbert, P. B., and Permar, S. R. (2017), chngpt: threshold
 
 Hall, P., Racine, J., and Li, Q. (2004), Cross-validation and the estimation of conditional probability densities, \emph{JASA} 99(468), 1015-1026.
 
-Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
+Juraska, M., Huang, Y., and Gilbert, P. B. (2018), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, kxy074, \url{https://doi.org/10.1093/biostatistics/kxy074}.
 }
 \seealso{
 \code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}

@@ -54,7 +54,7 @@ summary(out, boot, contrast="te")
 
 }
 \references{
-Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
+Juraska, M., Huang, Y., and Gilbert, P. B. (2018), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, kxy074, \url{https://doi.org/10.1093/biostatistics/kxy074}.
 }
 \seealso{
 \code{\link{riskCurve}} and \code{\link{bootRiskCurve}}

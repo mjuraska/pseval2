@@ -70,7 +70,7 @@ testConstancy(out, boot, contrast="te", null="H02", MCEPconstantH02=0, limS1=c(q
 
 }
 \references{
-Juraska, M., Huang, Y., and Gilbert, P. B., Inference on treatment effect modification by biomarker response in a three-phase sampling design. Under review.
+Juraska, M., Huang, Y., and Gilbert, P. B. (2018), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, kxy074, \url{https://doi.org/10.1093/biostatistics/kxy074}.
 
 Roy, S. N. and Bose, R. C. (1953), Simultaneous condence interval estimation, \emph{The Annals of Mathematical Statistics}, 24, 513-536.
 }
