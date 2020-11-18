@@ -4,10 +4,20 @@
 \alias{riskCurve}
 \title{Estimation of Conditional Clinical Endpoint Risk under Placebo and Treatment Given Biomarker Response to Treatment in a Baseline Surrogate Measure Three-Phase Sampling Design}
 \usage{
-riskCurve(formula, bsm, tx, data, pstype = c("continuous", "ordered"),
-  bsmtype = c("continuous", "ordered"), bwtype = c("fixed",
-  "generalized_nn", "adaptive_nn"), hinge = FALSE, weights = NULL,
-  psGrid = NULL, saveFile = NULL, saveDir = NULL)
+riskCurve(
+  formula,
+  bsm,
+  tx,
+  data,
+  pstype = c("continuous", "ordered"),
+  bsmtype = c("continuous", "ordered"),
+  bwtype = c("fixed", "generalized_nn", "adaptive_nn"),
+  hinge = FALSE,
+  weights = NULL,
+  psGrid = NULL,
+  saveFile = NULL,
+  saveDir = NULL
+)
 }
 \arguments{
 \item{formula}{a formula object with the binary clinical endpoint on the left of the \code{~} operator. The first listed variable on the right must be the biomarker response
@@ -108,7 +118,7 @@ Fong, Y., Huang, Y., Gilbert, P. B., and Permar, S. R. (2017), chngpt: threshold
 
 Hall, P., Racine, J., and Li, Q. (2004), Cross-validation and the estimation of conditional probability densities, \emph{JASA} 99(468), 1015-1026.
 
-Juraska, M., Huang, Y., and Gilbert, P. B. (2018), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, kxy074, \url{https://doi.org/10.1093/biostatistics/kxy074}.
+Juraska, M., Huang, Y., and Gilbert, P. B. (2020), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, 21(3): 545-560, \url{https://doi.org/10.1093/biostatistics/kxy074}.
 }
 \seealso{
 \code{\link{bootRiskCurve}}, \code{\link{summary.riskCurve}} and \code{\link{plotMCEPcurve}}

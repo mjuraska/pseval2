@@ -4,8 +4,15 @@
 \alias{testEquality}
 \title{Testing of the Null Hypothesis of Equal Marginal Causal Effect Predictiveness Curves for Two Biomarkers, Endpoints, or Baseline Covariate Subgroups}
 \usage{
-testEquality(object1, object2, boot1, boot2, contrast = c("te", "rr",
-  "logrr", "rd"), null = c("H03", "H04"), limS1 = NULL)
+testEquality(
+  object1,
+  object2,
+  boot1,
+  boot2,
+  contrast = c("te", "rr", "logrr", "rd"),
+  null = c("H03", "H04"),
+  limS1 = NULL
+)
 }
 \arguments{
 \item{object1}{an object returned by \code{\link{riskCurve}} pertaining to either \eqn{mCEP_1(s_1)} in \eqn{H_0^3} or \eqn{mCEP(s1|X=0)} in \eqn{H_0^4}}
@@ -65,7 +72,7 @@ testEquality(out0, out1, boot0, boot1, contrast="te", null="H04")
 
 }
 \references{
-Juraska, M., Huang, Y., and Gilbert, P. B. (2018), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, kxy074, \url{https://doi.org/10.1093/biostatistics/kxy074}.
+Juraska, M., Huang, Y., and Gilbert, P. B. (2020), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, 21(3): 545-560, \url{https://doi.org/10.1093/biostatistics/kxy074}.
 
 Roy, S. N. and Bose, R. C. (1953), Simultaneous condence interval estimation, \emph{The Annals of Mathematical Statistics}, 24, 513-536.
 }

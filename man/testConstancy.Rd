@@ -4,9 +4,16 @@
 \alias{testConstancy}
 \title{Testing of the Null Hypotheses of a Flat and a Constant Marginal Causal Effect Predictiveness Curve}
 \usage{
-testConstancy(object, boot, contrast = c("te", "rr", "logrr", "rd"),
-  null = c("H01", "H02"), overallPlaRisk = NULL,
-  overallTxRisk = NULL, MCEPconstantH02 = NULL, limS1 = NULL)
+testConstancy(
+  object,
+  boot,
+  contrast = c("te", "rr", "logrr", "rd"),
+  null = c("H01", "H02"),
+  overallPlaRisk = NULL,
+  overallTxRisk = NULL,
+  MCEPconstantH02 = NULL,
+  limS1 = NULL
+)
 }
 \arguments{
 \item{object}{an object returned by \code{\link{riskCurve}}}
@@ -70,7 +77,7 @@ testConstancy(out, boot, contrast="te", null="H02", MCEPconstantH02=0, limS1=c(q
 
 }
 \references{
-Juraska, M., Huang, Y., and Gilbert, P. B. (2018), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, kxy074, \url{https://doi.org/10.1093/biostatistics/kxy074}.
+Juraska, M., Huang, Y., and Gilbert, P. B. (2020), Inference on treatment effect modification by biomarker response in a three-phase sampling design, Biostatistics, 21(3): 545-560, \url{https://doi.org/10.1093/biostatistics/kxy074}.
 
 Roy, S. N. and Bose, R. C. (1953), Simultaneous condence interval estimation, \emph{The Annals of Mathematical Statistics}, 24, 513-536.
 }
